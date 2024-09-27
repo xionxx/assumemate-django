@@ -1,0 +1,50 @@
+#btn-nav{
+
+    float:right;
+    margin-right:20px;
+    font-size:20px;    
+}
+
+.total{
+    position: absolute;
+    border-radius:50%;
+    font-size: 13px;
+    width:20px;
+    height:20px;
+    display: flex;
+    justify-content: center;
+    margin-top: -32px;
+}
+.total, notif{
+    margin-right:20px;
+    background-color:red;
+}
+
+
+#notification-list {
+    padding: 10px;
+    border-radius: 2px;
+    min-width: 420px;
+    max-height: 250px; /* Set the maximum height for the container */
+    overflow-y: auto;
+}
+
+/* CSS for styling the title of each item in the notification list */
+.item-title {
+    font-size: 1.3rem;
+    color: #000;
+}
+
+/* CSS for styling the information in each item in the notification list */
+.item-info {
+    font-size: 1rem;
+    color: #000;
+}
+
+/* CSS for styling the list items within the Bootstrap list group */
+.list-group-item {
+    margin-bottom: 7px;
+    padding: 5px;
+    background: #e1e1e1;
+    border-radius: 4px;
+}

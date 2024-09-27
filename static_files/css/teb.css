@@ -1,0 +1,107 @@
+.wrapper {
+    margin-top: 5vh;
+  }
+  
+  .dataTables_filter {
+    display: none;
+  }
+  
+  .dataTables_wrapper .dataTables_paginate,
+  .dataTables_wrapper .dataTables_info {
+    margin-top: 12px;
+}
+    .table {
+        margin-bottom: 0px;
+    }
+
+  .table-hover > tbody > tr:hover {
+    background-color: #ccffff;
+  }
+  
+  @media only screen and (min-width: 768px) {
+    .table {
+      table-layout: fixed;
+      max-width: 100% !important;
+    }
+  }
+  
+  thead {
+    background: #ddd;
+  }
+  
+  .table td:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .highlight {
+    background: #ffff99;
+  }
+  
+  @media only screen and (max-width: 767px) {
+    /* Force table to not be like tables anymore */
+    table,
+  thead,
+  tbody,
+  th,
+  td,
+  tr {
+      display: block;
+    }
+  
+    /* Hide table headers (but not display: none;, for accessibility) */
+    thead tr,
+  tfoot tr {
+      position: absolute;
+      top: -9999px;
+      left: -9999px;
+    }
+  
+    td {
+      /* Behave  like a "row" */
+      border: none;
+      border-bottom: 1px solid #eee;
+      position: relative;
+      padding-left: 50% !important;
+    }
+  
+    td:before {
+      /* Now like a table header */
+      position: absolute;
+      /* Top/left values mimic padding */
+      top: 6px;
+      left: 6px;
+      width: 45%;
+      padding-right: 10px;
+      white-space: nowrap;
+    }
+  
+    .table td:nth-child(1) {
+      background: #ccc;
+      height: 100%;
+      top: 0;
+      left: 0;
+      font-weight: bold;
+    }
+  
+    /*
+    Label the data
+    */
+    .dataTables_length {
+      display: none;
+    }
+  }
+
+  #clear_btn:hover {
+    color: #f04a4a;
+  }
+
+  .dataTables_empty{
+    text-align: center;
+  }
+  
+  .marquee {
+    white-space: nowrap;
+    overflow: hidden;
+    box-sizing: border-box;
+}
