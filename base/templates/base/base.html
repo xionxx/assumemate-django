@@ -1,0 +1,137 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="{% static 'jquery/jquery-3.6.4.min.js' %}"></script>
+    <script src="{% static 'bootstrap/bootstrap.bundle.min.js' %}"></script>
+    <script defer src="{% static 'fontawesome/all.min.js' %}" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="{% static 'fontawesome/all.min.css' %}">
+    <link rel="stylesheet" href="{% static 'bootstrap/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/base.css' %}">
+    <link rel="stylesheet" href="{% static 'css/notiff.css' %}">
+    <link rel="stylesheet" href="{% static 'css/teb.css' %}">
+    <!-- Data Table JS -->
+    <script src='https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js'></script>
+    <script src='https://cdn.datatables.net/responsive/2.1.0/js/dataTables.responsive.min.js'></script>
+    <script src='https://cdn.datatables.net/1.13.5/js/dataTables.bootstrap5.min.js'></script>
+
+    <title>Assumemate</title>
+</head>
+<body>
+    {% block error %}
+    <div style="margin-top: 0px;">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="h-100">
+                <div class="sidebar-logo">
+                    <a href=""><br></a>
+                </div>
+                <!-- Sidebar Navigation -->
+                    <div class="profile">
+                            <img class="avatar"></br>
+                            <h3 class="name">John Doe</h3>
+                            <p>Administrator</p>
+                            <a href="" class="btn btn-outline-light btn-sm">Edit Profile</a>
+                            </div>
+                                <li class="sidebar-item">
+                                    <a href="#" class="sidebar-link">
+                                        <i class="fa-solid fa-house fa-sm pe-2"></i>
+                                        Home
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="/Assumemate/Listing" class="sidebar-link">
+                                        <i class="fa-solid fa-th-list fa-sm pe-2"></i>
+                                        Listings
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="/users/application" class="sidebar-link {% if nav == 'user' %}active{% endif %}">
+                                        <i class="fa-solid fa-users pe-2"></i>
+                                        Users
+                                    </a>
+    
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="/list/admin" class="sidebar-link {% if nav == 'admin' %}active{% endif %}">
+                                        <i class="fa-solid fa-user-tie pe-2"></i>
+                                        Administrators
+                                    </a>
+                                </li>
+
+                                <li class="sidebar-item">
+                                    <a href="/list/reviewer" class="sidebar-link {% if nav == 'reviewer' %}active{% endif %}">
+                                        <i class="fa-solid fa-user-shield pe-2"></i>
+                                        Reviewers
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="/Assumemate/Reports" class="sidebar-link">
+                                        <i class="fa-solid fa-chart-line pe-2"></i>
+                                        Reports
+                                    </a>
+                                </li>
+                                
+                                
+                                <li class="sidebar-item pt-5">
+                                    <a href="{% url 'user_logout' %}" class="sidebar-link">
+                                        <i class="fa-solid fa-arrow-right-from-bracket pe-2"></i>
+                                        Log Out
+                                    </a>
+                                </li>
+                            </ul>
+                    </div>
+                    
+        </aside>    
+        <!-- Main Component -->
+        <div class="main">
+            <nav id="header" class="navbar navbar-expand p-3 border-bottom ">
+                <!-- Button for sidebar toggle -->
+                <div class="container-fluid d-flex justify-content-start">
+                    <i class="fa-regular pe-2 fa-clock"></i>
+                    <span style="margin-right: 6px;" id="formattedDateTime"></span>
+                </div>
+                <div class="col-sm mx-3">
+                    <!-- Notification Bell with Dropdown (moved to the left) -->
+                    <div class="dropdown">
+                        <a class="text-light" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Notifications">
+                            <i class="fas fa-bell" style="font-size: 20px; color: #4a8af0"></i>
+                          
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationDropdown">
+                            <!-- Notification List Dropdown Content -->
+                            <div id="notification-list" class="notification-list">
+                                <h6 class="item-title">Notifications</h6>
+                            
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+            <main id="wrapper" class="content px-3 pt-2">
+                {% if messages %}
+                    {% for message in messages %}
+                        {% if message.tags == 'success' %}
+                            <div class="alert p-0 mt-1 mx-4 alert-{{message.tags}} text-center" id="msg" role="alert">
+                                {{ message }}
+                            </div>
+                        {% elif message.tags == 'error' %}
+                            <div class="alert p-0 mt-1 mx-4 alert-danger text-center" id="msg" role="alert">
+                                {{ message }}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+                {% block content %}
+                {% endblock content %}
+            </main>
+        </div>
+    </div>
+    {% endblock error %}
+</body>
+<script src="{% static 'scripts/templa.js' %}"></script>
+</html>

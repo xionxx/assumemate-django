@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation</title>
+</head>
+<body>
+    <!-- <h1>Conversation</h1>
+    <ul>
+        {% for message in messages %}
+            <li>
+                <strong>{{ message.sender_id.assumptor_name }}:</strong> {{ message.mess_content }}<br>
+                <em>{{ message.mess_date }}</em>
+            </li>
+        {% endfor %}
+    </ul> -->
+    {% if pic %}
+    <img src="{{ pic }}" style="width: 200px; height: 200px;">
+    {% endif %}
+
+    <form method="post" action="">
+        {% csrf_token %}
+        <textarea name="content" placeholder="Type your message here..."></textarea><br>
+        <button type="submit">Send</button>
+    </form>
+</body>
+<script type="text/javascript">
+    let url = 'ws://' + window.location.host + '/ws/socket-server/';
+    console.log(url);
+    console.log('WebSocket' in window); // Should print true
+
+    const chatSocket = new WebSocket(url);
+
+    chatSocket.onopen = function() {
+        console.log("WebSocket connection established");
+    };
+
+    chatSocket.onerror = function(e) {
+        console.log('WebSocket error: ', e);
+    };
+
+    chatSocket.onclose = function(e) {
+        console.log('WebSocket closed: ', e);
+    };
+
+    chatSocket.onmessage = function(e) {
+        let data = JSON.parse(e.data);
+        console.log('Data: ', data);
+    };
+</script>
+</html>

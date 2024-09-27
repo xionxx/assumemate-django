@@ -1,0 +1,124 @@
+{% extends "base/base.html" %}
+{% load static %}
+
+{% block content %}
+<form class="row g-3" action="#" method="POST" enctype="multipart/form-data" id="my-form">
+    {% csrf_token %}
+    <h2>EDIT ADMIN INFORMATION</h2>    
+    <br>
+    <div id="message" class="alert alert-info" style="display:none;"></div>
+    <div id="errors" class="alert alert-danger" style="display:none;"></div>
+
+    <div class="col-md-6">
+        <label for="email_address" class="form-label">Email Address</label>
+        <input type="email" class="form-control" id="emailaddress" name="emailaddress" required/>
+    </div>
+    <div class="col-md-6">
+        <label for="phone_number" class="form-label">Phone Number</label>
+        <input type="text" class="form-control" id="phone_number" name="phone_number" required/>
+    </div>
+    <div class="col-md-4">
+        <label for="firstname" class="form-label">Firstname</label>
+        <input type="text" class="form-control" id="firstname" name="firstname" required/>
+    </div>
+    <div class="col-md-4">
+        <label for="middlename" class="form-label">Middlename</label>
+        <input type="text" class="form-control" id="middlename" name="middlename"/>
+    </div>
+    <div class="col-md-4">
+        <label for="lastname" class="form-label">Lastname</label>
+        <input type="text" class="form-control" id="lastname" name="lastname" required/>
+    </div>
+
+    <div class="col-md-4">
+        <label for="gender" class="form-label">Gender</label><br>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="gender" id="male" value="Male" required>
+            <label class="form-check-label" for="male">Male</label>
+        </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="gender" id="female" value="Female" required>
+            <label class="form-check-label" for="female">Female</label>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <label for="dob" class="form-label">Date of Birth</label>
+        <input type="date" class="form-control" id="dob" name="dob" required/>
+    </div>
+    <div class="col-md-4">
+        <label for="address" class="form-label">Address</label>
+        <input type="text" class="form-control" id="address" name="address" required/>
+    </div>
+    <div class="col-12 d-flex justify-content-end">
+        <a href="/admin_acc/list" class="btn btn-primary" style="margin-right:5px">Back</a>
+        <button type="submit" class="btn btn-primary">Update</button>
+    </div>
+</form>
+
+<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+<script>
+$(document).ready(function () {
+    var adminId = '{{ admin_id }}';
+
+    // Fetch admin details to populate the form (you can keep this the same)
+    $.ajax({
+        url: `/api/admins/${adminId}/`,
+        type: 'GET',
+        success: function (data) {
+            $('#emailaddress').val(data.admin_email);
+            $('#phone_number').val(data.admin_contact);
+            $('#firstname').val(data.admin_first_name);
+            $('#middlename').val(data.admin_middle_name);
+            $('#lastname').val(data.admin_last_name);
+            $('#dob').val(data.admin_dob);
+            $('#address').val(data.admin_address);
+            $('input[name="gender"][value="' + data.admin_gender + '"]').prop('checked', true);
+        },
+        error: function (error) {
+            console.log('Error fetching admin details:', error);
+            alert('Failed to fetch admin details.');
+        }
+    });
+
+    // Handle form submission to update admin details
+    $('#my-form').submit(function (event) {
+        event.preventDefault();
+
+        var formData = {
+            admin_email: $('#emailaddress').val(),
+            admin_contact: $('#phone_number').val(),
+            admin_first_name: $('#firstname').val(),
+            admin_middle_name: $('#middlename').val(),
+            admin_last_name: $('#lastname').val(),
+            admin_dob: $('#dob').val(),
+            admin_address: $('#address').val(),
+            admin_gender: $('input[name="gender"]:checked').val(),
+        };
+
+        $.ajax({
+            url: `/api/admins/${adminId}/update/`,  // Make sure this is the correct update endpoint
+            type: 'POST',
+            data: formData,
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'  // Ensure you include the CSRF token for the POST request
+            },
+            success: function (data) {
+                $('#message').text('Admin details updated successfully!').show();
+                $('#errors').hide();
+
+                // Redirect to account list after 1.5 seconds (optional delay)
+                setTimeout(function() {
+                window.location.href = "/admin_acc/list";  // Redirect to the account list URL
+                }, 1500);
+            },
+            error: function (error) {
+                console.log('Error updating admin details:', error);
+                $('#errors').text('Failed to update admin details.').show();
+                $('#message').hide();
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

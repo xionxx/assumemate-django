@@ -1,0 +1,78 @@
+{% extends "base/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="d-flex mt-1 px-3 justify-content-start">
+    <div class="row mt-2">
+        <p class="h4"><span class="h5 font-weight-bold text-primary"></span></p>
+    </div>
+    <br><br>
+    <div class="p-2">
+        <a href="/Assumemate/Users" class="btn btn-lg btn-success" style="background-color: #4A8AF0; border: 2px solid #4A8AF0; color: white; border-radius: 10px; padding: 12px 24px;">
+            <span><i class="fa-solid fa-arrow-left"></i></span>
+        </a>
+    </div>
+</div>
+
+<div class="col bg-white rounded mx-2 my-2 px-3 py-1">
+    <div class="d-flex justify-content-center mx-0">
+        <div class="row w-50">
+            <div class="input-group input-group-sm my-3 border border-dark" style="border-radius: 20px; height: 45px;">
+                <div class="input-group-prepend align-self-center">
+                    <span class="input-group-text bg-transparent border border-0">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                </div>
+                <input id="search_input" type="text" oninput="hasText()" class="form-control border-0 shadow-none" aria-label="Small" aria-describedby="inputGroup-sizing-sm" placeholder="Search"/>
+
+                <div class="input-group-prepend ml-3 align-self-center">
+                    <span class="input-group-text bg-transparent m-0 border border-0 circle" style="display:none;">
+                        <button id="clear_btn" onclick="clearText()" class="btn btn-sm m-0 border-0 circle" style="display: none;">
+                            <i id="clear-mark" class="fa-solid fa-circle-xmark"></i>
+                        </button>
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    <div>
+    <div class="col-12 text-center my-2">
+        <h2 class="font-weight-bold" style="color: black;">On Hold Account</h2>
+    </div>
+    <div class="col px-2 pt-1">
+                <table id="admin_list" class="table table-sm table bordered" width="100%">
+                    <thead>
+                        <tr>
+                            <th class="fs-9 text-center" width="20%">ID</th>
+                            <th class="fs-9 text-center" width="20%">Fullname</th>
+                            <th class="fs-9 text-center" width="20%">Total Listings</th>
+                            <th class="fs-9 text-center" width="20%">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="marquee">1</td>
+                            <td class="marquee">John Doe</td>
+                            <td class="marquee">2</td>
+                            <td class="marquee">
+                                <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target=""><i class="fa-regular fa-eye"></i></button>
+                                <a class="btn btn-sm" href="" style="background-color: green; color: white; border: none;"><i class="fas fa-recycle"></i></a>                                
+                                <a class="btn btn-sm btn-danger" heref=""><i class="fa-regular fa-trash-can"></i></a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="marquee">2</td>
+                            <td class="marquee">John Doe</td>
+                            <td class="marquee">2</td>
+                            <td class="marquee">
+                                <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target=""><i class="fa-regular fa-eye"></i></button>
+                                <a class="btn btn-sm" href="" style="background-color: green; color: white; border: none;"><i class="fas fa-recycle"></i></a>                                
+                                <a class="btn btn-sm btn-danger" heref=""><i class="fa-regular fa-trash-can"></i></a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+    </div>
+</div>
+{% endblock content %}
