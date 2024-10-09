@@ -16,7 +16,7 @@ from django.core.mail import EmailMessage
 from django.views.decorators.http import require_POST
 from django.contrib import messages
 from .permissions import IsAdminUser
-from .models import Message, UserApplication, UserProfile, UserVerification
+from .models import UserApplication, UserProfile
 from rest_framework import viewsets, status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -221,9 +221,7 @@ def reject_user(request, id):
 
 ###### render views ######.
 def base(request):
-    user_pic = UserProfile.objects.get(user_id=45)
-    context = {'pic': user_pic.user_prof_pic}
-    # context = {}
+    context = {}
     return render(request, "base/home.html", context)
 
 # @user_passes_test(is_admin)

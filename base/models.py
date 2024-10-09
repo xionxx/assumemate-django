@@ -53,6 +53,8 @@ class UserProfile(models.Model):
     user_prof_valid_id = models.URLField(null=True, blank=True)
     user_id = models.OneToOneField(UserAccount, null=False, on_delete=models.CASCADE, db_column='user_id', related_name='profile')
 
+    def __str__(self):
+        return f"{self.user_prof_fname} {self.user_prof_lname}"
 
     class Meta:
         db_table = 'user_profile'
@@ -67,7 +69,7 @@ class UserVerification(models.Model):
     user_id = models.OneToOneField(UserAccount, null=True, blank=True, on_delete=models.SET_NULL, related_name='email_verifications', db_column='user_id')
 
     def __str__(self):
-        return f"Verification for {self.user_id.email}"
+        return f"Verification for {self.user_id.email}: {self.user_verification_is_verified}"
     
     class Meta:
         db_table = 'user_verification'
@@ -82,35 +84,67 @@ class UserApplication(models.Model):
         db_table = 'user_application'
 
 class Listing(models.Model):
-    list_id = models.BigAutoField(primary_key=True, editable=False)
-    list_price = models.DecimalField(max_digits=9, decimal_places=2, null=False)
-    assumptor_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, null=False, db_column='assumptor_id')
+    list_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    list_content = models.JSONField(null=True, blank=True)  # JSON data for car details
+    list_status = models.CharField(max_length=20, default="active")  # Default status
+    list_duration = models.DateTimeField(null=True, blank=True)  # Duration as date & time
+    user_id = models.ForeignKey(UserAccount, null=True, blank=True, on_delete=models.PROTECT, db_column='user_id', related_name='listing')
+
+    def __str__(self):
+        return str(self.list_id)
 
     class Meta:
         db_table = 'listing'
+        
+# class Wallet(models.Model):
+#     wall_id = models.BigAutoField(primary_key=True, editable=False)
+#     wall_amnt = models.DecimalField(max_digits=10, decimal_places=2)
+
+#     def __str__(self):
+#         return f"Wallet {self.wall_id}: {self.wall_amnt} coins"
 
 class Offer(models.Model):
     offer_id = models.BigAutoField(primary_key=True, editable=False)
-    offer_price = models.DecimalField(max_digits=9, decimal_places=2, null=False)
-    assumee_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, null=False, db_column='assumee_id')
+    offer_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    offer_status = models.CharField(max_length=15, default='PENDING')
+    offer_created_at = models.DateTimeField(auto_now_add=True, null=True)
+    offer_updated_at = models.DateTimeField(auto_now=True, null=True)
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, null=True, db_column='list_id', related_name='offer')
+    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, null=True, db_column='user_id', related_name='offer')
 
     class Meta:
         db_table = 'offer'
 
-class Message(models.Model):
-    mess_id = models.BigAutoField(primary_key=True, editable=False)
-    mess_content = models.CharField(max_length=255, null=False)
-    receiver_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, null=False, db_column='receiver_id', related_name='receiver_id')
-    sender_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, null=False, db_column='sender_id', related_name='sender_id')
-    mess_date = models.DateTimeField(auto_now_add=True)
-    mess_is_read = models.BooleanField(default=False)
+    def __str__(self):
+        return f'User {self.user_id.email} offers {self.offer_price} for list item {self.list_id}'
+
+class ChatRoom(models.Model):
+    chatroom_id = models.BigAutoField(primary_key=True, editable=False,)
+    chatroom_last_message = models.TextField(null=True, blank=True)
+    chatroom_user_1 = models.ForeignKey(UserAccount, on_delete=models.PROTECT, null=True, related_name='user_id_1', db_column='chatroom_user_1')
+    chatroom_user_2 = models.ForeignKey(UserAccount, on_delete=models.PROTECT, null=True, related_name='user_id_2', db_column='chatroom_user_2')
+    
+    class Meta:
+        db_table = 'chat_room'
+        constraints = [
+            models.UniqueConstraint(fields=['chatroom_user_1', 'chatroom_user_2'], name='unique_chat_room'),
+        ]
+        
+    def __str__(self):
+        return f'Chat room {self.chatroom_id}'
+
+class ChatMessage(models.Model):
+    chatmess_id = models.BigAutoField(primary_key=True, editable=False)
+    chatmess_content = models.TextField(null=True, blank=True) # charfield for now
+    chatmess_created_at = models.DateTimeField(auto_now_add=True)
+    chatmess_is_read = models.BooleanField(default=False)
+    sender_id = models.ForeignKey(UserAccount, on_delete=models.PROTECT, null=True, related_name='messages', db_column='user_id')
+    chatroom_id = models.ForeignKey(ChatRoom, on_delete=models.PROTECT, null=False, related_name='messages', db_column='chatroom_id')
 
     class Meta:
-        db_table = 'message'
+        db_table = 'chat_message'
 
     def __str__(self):
-        return f'Message from {self.sender_id} to {self.receiver_id} at {self.mess_date}'
-
-# class 
+        return f'Message from {self.sender_id} to room {self.chatroom_id} at {self.chatmess_created_at}'
 
 

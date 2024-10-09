@@ -15,9 +15,9 @@
             </li>
         {% endfor %}
     </ul> -->
-    {% if pic %}
+    <!-- {% if pic %}
     <img src="{{ pic }}" style="width: 200px; height: 200px;">
-    {% endif %}
+    {% endif %} -->
 
     <form method="post" action="">
         {% csrf_token %}
@@ -26,7 +26,8 @@
     </form>
 </body>
 <script type="text/javascript">
-    let url = 'ws://' + window.location.host + '/ws/socket-server/';
+    const user_id = '1';
+    let url = 'ws://' + window.location.host + '/ws/chat/' + user_id + '/';
     console.log(url);
     console.log('WebSocket' in window); // Should print true
 

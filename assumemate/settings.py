@@ -33,7 +33,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG') == 'True'
 
-ALLOWED_HOSTS = ['192.168.1.9', '192.168.254.131', '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = ['192.168.1.9', '172.16.7.47', '172.16.22.87', '192.168.254.131', '127.0.0.1', 'localhost']
 AUTH_USER_MODEL = 'base.UserAccount'
 CORS_ALLOW_ALL_ORIGINS = True 
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'

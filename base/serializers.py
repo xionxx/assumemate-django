@@ -5,10 +5,8 @@ from datetime import timedelta
 from django.core.mail import EmailMessage
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from django.forms import ValidationError
-from django.urls import reverse
 from rest_framework import serializers
-from .models import Listing, Offer, Message, UserProfile, UserVerification, UserApplication
+from .models import Listing, Offer, UserProfile, UserVerification, UserApplication, ChatMessage, ChatRoom, Listing
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.core.mail import send_mail
@@ -97,7 +95,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['user_prof_id', 'user_prof_lname', 'user_prof_fname', 'user_prof_gender', 
-                  'user_prof_dob', 'user_prof_mobile', 'user_prof_address', 'user_prof_valid_id', 'user_id']
+                  'user_prof_dob', 'user_prof_mobile', 'user_prof_address', 'user_prof_valid_id', 'user_prof_pic', 'user_id']
         read_only_fields = ['user_prof_valid_id', 'user_prof_pic']
 
     def create(self, validated_data):
@@ -207,6 +205,21 @@ class UserLoginSerializer(serializers.Serializer):
             'is_assumptor': user.is_assumptor
         }
     
+class MessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatMessage
+        fields = ['sender_id', 'chatroom_id', 'chatmess_content', 'chatmess_created_at', 'chatmess_is_read']
+
+class ChatRoomSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatRoom
+        fields = ['chatroom_id', 'chatroom_user_1', 'chatroom_user_2', 'chatroom_last_message']
+
+class ChatUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fieds = ['user_prof_lname', 'user_prof_fname', 'user_prof_pic', 'user_id']    
+    
 class UserGoogleLoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -230,47 +243,23 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         return token
     
-    # def validate(self, attrs):
-    #     data = super().validate(attrs)
-    #     # Ensure user is set
-    #     self.user = self.user
-    #     return data
-    
-    # def to_representation(self, instance):
-    #     user = self.user
-        
-    #     return {
-    #         'access': instance['access'],
-    #         'refresh': instance['refresh'],
-    #         'email': user.email,
-    #         'is_reviewer': user.is_reviewer,
-    #         'is_assumee': user.is_assumee,
-    #         'is_assumptor': user.is_assumptor
-    #     }
-        
-    
-# class UserProfileSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = UserProfile
-#         fields = '__all__'
-
-#         def
-
-
-###############################
-###############################
-class ListingSerializer(serializers.ModelSerializer):
+class CarListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Listing
-        fields = ['list_id', 'list_price', 'assumptor_id']
+        fields = '__all__'
 
+# class WalletSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Wallet
+#         fields = ['wall_id', 'wall_amnt']
+
+
+###############################
+###############################
 class OfferSerializer(serializers.ModelSerializer):
     class Meta:
         model = Offer
-        fields = ['offer_id', 'offer_price', 'assumee_id']
+        # fields = ['offer_id', 'offer_price', 'user_id', 'list_id', '']
+        fields = '__all__'
 
-class MessageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Message
-        fields = ['mess_id', 'mess_content', 'receiver_id', 'sender_id', 'mess_date', 'mess_is_read']
         
