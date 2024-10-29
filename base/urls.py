@@ -5,27 +5,58 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 urlpatterns = [
-    path("", views.base, name="base"),
-    path("register/user/<str:user_type>", views.upperuser_register, name="upperuser_register"),
-    path("account/admin/create", views.admin_acc_create, name="admin_acc_create"),
-    path("list/admin", views.admin_acc_list, name="admin_acc_list"),
-    path("list/reviewer", views.reviewer_acc_list, name="reviewer_acc_list"),
-    path("account/reviewer/create", views.reviewer_acc_create, name="reviewer_acc_create"),
+    path('', views.base, name='base'),
+    path('register/user/<str:user_type>', views.upperuser_register, name='upperuser_register'),
+    path('account/admin/create', views.admin_acc_create, name='admin_acc_create'),
+    path('list/admin', views.admin_acc_list, name='admin_acc_list'),
+    path('list/reviewer', views.reviewer_acc_list, name='reviewer_acc_list'),
+    path('account/reviewer/create', views.reviewer_acc_create, name='reviewer_acc_create'),
+    path('user/edit/profile', views.edit_profile, name='edit_profile'),
+    path('update/profile', views.update_profile, name='update_profile'),
+    path('change/password', views.change_password, name='change_password'),
 
-    path("users/application", views.user_application_list, name="user_application_list"),
-    path("users/application/approve", views.approve_user, name="approve_user"),
-    path("users/application/reject", views.reject_user, name="reject_user"),
+    path('activate/<int:admin_id>/', views.usertype_is_active, {'status': True}, name='is_activate'),
+    path('deactivate/<int:admin_id>/', views.usertype_is_active, {'status': False}, name='is_deactivate'),
 
-    path("login/", views.user_login, name="user_login"),
-    path("logout/", views.logout, name="user_logout"),
+    path('users/application', views.user_application_list, name='user_application_list'),
+    path('users/application/approve', views.approve_user, name='approve_user'),
+    path('users/application/reject', views.reject_user, name='reject_user'),
 
+    path('login/', views.user_login, name='user_login'),
+    path('logout/', views.logout_user, name='user_logout'),
+    path('forgot-password/', views.forgot_password, name='forgot_password'),
+    path('forgot-password/send-link', views.send_reset_link, name='send-reset-link'),
+    path('reset-password/', views.reset_password_page, name='reset-password'),
+
+    path('assumemate/users/list', views.assumemate_users, name='assumemate_users_list'),
+    path('assumemate/listing/', views.assumemate_listing, name='assumemate_listing'),
+    path('listing/details/<int:user_id>/<uuid:list_id>/', views.listing_view_details, name='listing_view_details'),
+    path('users/details/<int:user_id>/', views.users_view_details, name='users_view_details'),
+
+    path('Assumemate/Reviewer/Pending Listing', views.assumemate_rev_pending_list, name='assumemate_rev_pending_list'),
+    path('Assumemate/Reviewer/Pending Users', views.pending_accounts_view, name='pending_accounts_view'),
+    path('Assumemate/Reviewer/Reported Users', views.assumemate_rev_report_users, name='assumemate_rev_report_users'),
+
+    path('Reviewer/View/<int:user_id>/', views.user_detail_view, name='user_detail_view'),
+    # path('Reviewer/ViewList/<int:list_app_id>/', views.listing_detail_view, name='listing_detail_view'),
+
+    # path('acceptlist/<int:list_app_id>/', views.accept_listing, name='accept_listing'),
+    # path('rejectlist/<int:list_app_id>/', views.reject_listing, name='reject_listing'),
+   
+    # path('accept/<int:user_id>/', views.accept_user, name='accept_user'),
+    # path('reject/<int:user_id>/', views.reject_user, name='reject_user'),
+
+    path('acceptreport/<int:report_id>/', views.accept_report, name='accept_report'),
+    path('rejectreport/<int:report_id>/', views.reject_report, name='reject_report'),
+    path('Reviewer/ViewReport/<int:report_id>/', views.report_detail_view, name='report_detail_view'),
+    path('Admin/PlatformReport', views.platform_report, name='platform_report'),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)                    
 
 # {
-# "email": "kangpatricia96@gmail.com",
-# "password": "tokunoyushi2004"
+# 'email': 'kangpatricia96@gmail.com',
+# 'password': 'tokunoyushi2004'
 # }
 

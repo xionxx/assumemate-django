@@ -1,17 +1,24 @@
+import os
+from dotenv import load_dotenv
 import secrets, string
 from django.db import IntegrityError
 from django.utils import timezone
 from datetime import timedelta
 from django.core.mail import EmailMessage
 from django.shortcuts import get_object_or_404
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from django.conf import settings
 from rest_framework import serializers
-from .models import Listing, Offer, UserProfile, UserVerification, UserApplication, ChatMessage, ChatRoom, Listing
+from .models import Favorite, Listing, Offer, PasswordResetToken, UserProfile, UserVerification, UserApplication, ChatMessage, ChatRoom, Listing, Wallet
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.contrib.auth.tokens import default_token_generator    
 from django.contrib.sites.shortcuts import get_current_site
 
+load_dotenv()
 UserModel = get_user_model()
 
 class UserRegisterSerializer(serializers.ModelSerializer):
@@ -171,6 +178,7 @@ class EmailVerificationSerializer(serializers.ModelSerializer):
             <p><a href="{verification_key}">{verification_key}</a></p></br>
             <p>For security reasons, the link will be only valid for 24 hours. After 24 hours, 
             you will need to register again. Thank you for supporting ASSUMATE</p>
+            <p>If this is not you, please ignore this message.</p>
         </body>
         </html>"""
 
@@ -192,7 +200,7 @@ class UserLoginSerializer(serializers.Serializer):
     def check_user(self, validated_data):
         user = authenticate(username=validated_data['email'], password=validated_data['password'])
         if not user:
-            raise serializers.ValidationError('Incorrect email or password')
+            raise serializers.ValidationError({'error': 'Incorrect email or password'})
         
         return user
     
@@ -204,6 +212,63 @@ class UserLoginSerializer(serializers.Serializer):
             'is_assumee': user.is_assumee,
             'is_assumptor': user.is_assumptor
         }
+    
+class PasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    class Meta:
+        model = PasswordResetToken
+        read_only_fields = ['reset_token', 'user', 'reset_token_expires_at', 'reset_token_created_at']
+        # read_only_fields = ['reset_token', 'reset_token_expires_at', 'reset_token_created_at']
+    
+    def check_user(self, _email):
+        try:
+            user = UserModel.objects.get(email=_email)
+            return user
+        except UserModel.DoesNotExist:
+            raise serializers.ValidationError('User not found.')
+        
+    def verify_token(self):
+        return
+    
+    def create_token(self, email):
+        user = self.check_user(email)
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        expires_at =timezone.now() + timedelta(hours=1)
+
+        reset_token, created = PasswordResetToken.objects.update_or_create(
+            user=user,
+            defaults={
+                'reset_token': token,
+                'reset_token_expires_at': expires_at,
+                'reset_token_created_at': timezone.now()
+            }
+        )
+
+        return user.profile.user_prof_fname, uidb64, reset_token.reset_token
+
+    def send_reset_link(self, email):
+        base_url = os.getenv('API_URL')
+        template_name  = 'base/reset_link_template.html'
+        name, uidb64, token = self.create_token(email)
+        reset_link = f'{base_url}/reset-password?key={uidb64}&token={token}'
+        context = {'name': name, 'link': reset_link}
+        email_content =  render_to_string(
+            template_name=template_name,
+            context=context
+            )
+        
+        email_message = EmailMessage(
+        subject='[ASSUMATE Account] Password reset request',
+        body=email_content,
+        from_email=settings.EMAIL_HOST_USER,
+        to=[email],
+            )
+        
+        email_message.content_subtype = "html"
+
+        email_message.send(fail_silently=False)
     
 class MessageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -248,10 +313,31 @@ class CarListingSerializer(serializers.ModelSerializer):
         model = Listing
         fields = '__all__'
 
-# class WalletSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Wallet
-#         fields = ['wall_id', 'wall_amnt']
+class WalletSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Wallet
+        fields = ['wall_id', 'wall_amnt']
+
+class ListingSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Listing
+        fields = '__all__' # Include other fields as necessary
+
+class FavoriteSerializer(serializers.ModelSerializer):
+    list_id = ListingSerializer()
+    assumptor_id = UserProfileSerializer(source='user_id.userprofile', read_only=True)  # Ensure this is correct
+
+    class Meta:
+        model = Favorite
+        fields = '__all__'
+
+class FavoriteMarkSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Favorite
+        fields = '__all__'
+
 
 
 ###############################

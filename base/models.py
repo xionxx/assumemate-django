@@ -1,6 +1,10 @@
+from datetime import timedelta
+from django.utils import timezone
 import uuid
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None):
@@ -95,13 +99,91 @@ class Listing(models.Model):
 
     class Meta:
         db_table = 'listing'
-        
-# class Wallet(models.Model):
-#     wall_id = models.BigAutoField(primary_key=True, editable=False)
-#     wall_amnt = models.DecimalField(max_digits=10, decimal_places=2)
 
-#     def __str__(self):
-#         return f"Wallet {self.wall_id}: {self.wall_amnt} coins"
+class Report(models.Model):
+    report_id = models.AutoField(primary_key=True)
+    report_details = models.JSONField(null=True)
+    reviewer = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='reviewed_reports', db_column='user_id')
+    updated_at = models.DateTimeField(default=timezone.now)
+    report_status =  models.CharField(max_length=20, default='PENDING')  # E.g., Approved, Pending, Declined
+    report_reason = models.CharField(max_length=255, null=True)
+
+    def check_suspension(self):
+        # Get the reported user ID and the user ID who reported
+        reported_user_id = self.report_details.get('reported_user_id')
+        reporter_id = self.report_details.get('user_id')
+        
+        if not reported_user_id:
+            return
+
+        # Count approved reports for the reported user, excluding reports from the same reporter
+        approved_reports = Report.objects.filter(
+            report_details__reported_user_id=reported_user_id,
+            report_status='APPROVED'
+        ).exclude(report_details__user_id=reporter_id).count()
+
+        # Set the threshold for suspension
+        if approved_reports >= 3:  # Customize threshold
+            # Check if the user is already suspended
+            if not SuspendedUser.objects.filter(user_id=reported_user_id).exists():
+                # Suspend the user if not already suspended
+                suspension = SuspendedUser.objects.create(
+                    user_id_id=reported_user_id,  # FK, so use `_id`
+                    sus_start=timezone.now(),
+                    sus_end=timezone.now() + timedelta(days=30)  # Customize suspension duration
+                )
+                suspension.save()
+
+
+    class Meta:
+        db_table = 'report'
+
+@receiver(post_save, sender=Report)
+def trigger_suspension(sender, instance, **kwargs):
+    if instance.report_status == 'APPROVED':
+        instance.check_suspension()
+
+class SuspendedUser(models.Model):
+    sus_id = models.AutoField(primary_key=True)
+    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE)  # FK to user
+    sus_start = models.DateTimeField(auto_now_add=True)
+    sus_end = models.DateTimeField()
+
+    def __str__(self):
+        return f"User {self.user_id} is suspended from {self.sus_start} to {self.sus_end}"
+
+class ListingApplication(models.Model):
+    list_app_id = models.AutoField(primary_key=True)  # Auto-incrementing primary key
+    list_app_status = models.CharField(max_length=20)  # E.g., Approved, Pending, Declined
+    list_app_date = models.DateTimeField(default=timezone.now)  # Date of application
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  # Foreign key to Listing
+    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, db_column='user_id', related_name='listing_applications')  # Foreign key to UserAccount
+    list_app_reviewer_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, blank=True, null=True, db_column='user_app_reviewer_id', related_name='listing_reviews')  # Add related_name
+    list_reason = models.CharField(max_length=255, null=True)
+
+    class Meta:
+        db_table = 'listing_application'
+
+        
+class Wallet(models.Model):
+    wall_id = models.BigAutoField(primary_key=True, editable=False)
+    wall_amnt = models.DecimalField(max_digits=10, decimal_places=2)
+    # user_id = models.ForeignKey(UserAccount, on_delete=models.PROTECT, db_column='user_id')
+
+    def __str__(self):
+        return f"Wallet {self.wall_id}: {self.wall_amnt} coins"
+    
+    class Meta:
+        db_table = 'wallet'
+
+class PromoteListing(models.Model):
+    prom_id = models.BigAutoField(primary_key=True, editable=False)
+    prom_start = models.DateTimeField()
+    prom_end = models.DateTimeField()
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, null=False, db_column='list_id')
+
+    class Meta:
+        db_table = 'promote_listing'
 
 class Offer(models.Model):
     offer_id = models.BigAutoField(primary_key=True, editable=False)
@@ -135,7 +217,7 @@ class ChatRoom(models.Model):
 
 class ChatMessage(models.Model):
     chatmess_id = models.BigAutoField(primary_key=True, editable=False)
-    chatmess_content = models.TextField(null=True, blank=True) # charfield for now
+    chatmess_content = models.JSONField(null=True, blank=True) # charfield for now
     chatmess_created_at = models.DateTimeField(auto_now_add=True)
     chatmess_is_read = models.BooleanField(default=False)
     sender_id = models.ForeignKey(UserAccount, on_delete=models.PROTECT, null=True, related_name='messages', db_column='user_id')
@@ -147,4 +229,24 @@ class ChatMessage(models.Model):
     def __str__(self):
         return f'Message from {self.sender_id} to room {self.chatroom_id} at {self.chatmess_created_at}'
 
+class Favorite(models.Model):
+    fav_id = models.BigAutoField(primary_key=True, editable=False)  # Primary key
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  # Link to Listing
+    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, db_column='user_id')  # Link to UserAccount
+    fav_date = models.DateTimeField(auto_now_add=True)  # Automatically set when a favorite is added
 
+    class Meta:
+        db_table = 'favorite'
+        unique_together = ('list_id', 'user_id')  # Ensure each user can favorite a listing only once
+
+    def __str__(self):
+        return f'Favorite: {self.user_id.email} favorited {self.list_id.list_content}'
+
+class PasswordResetToken(models.Model):
+    user = models.OneToOneField(UserAccount, unique=True, on_delete=models.CASCADE, db_column='user_id', related_name='reset_password')
+    reset_token = models.TextField()
+    reset_token_created_at = models.DateTimeField(auto_now_add=True)
+    reset_token_expires_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'password_reset_token'

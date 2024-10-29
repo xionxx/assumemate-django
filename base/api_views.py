@@ -1,11 +1,14 @@
+from decimal import Decimal
+from django.shortcuts import redirect, render
+from django.urls import reverse
 import requests, base64, cloudinary
 from smtplib import SMTPConnectError, SMTPException
 # from django.contrib.auth.decorators import user_passes_test
 from django.utils import timezone
-from django.http import JsonResponse
+from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.db.models import F, Max, OuterRef, Subquery, Q, Case, When
 # from .permissions import IsAdminUser
-from .models import UserProfile, UserVerification, ChatRoom, ChatMessage
+from .models import UserProfile, UserVerification, ChatRoom, ChatMessage, Wallet
 from .serializers import *
 from rest_framework import status, permissions, generics
 from rest_framework.views import APIView
@@ -20,6 +23,8 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.contrib.auth.models import update_last_login
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 
 class MyTokenObtainPairView(TokenObtainPairView):
@@ -139,11 +144,12 @@ class VerifyEmail(APIView):
             verification.user_verification_is_verified = True
             verification.save()
 
-            return Response({'detail': 'Email has been verified.'}, status=status.HTTP_200_OK)
+            return HttpResponseRedirect(reverse('user-verified-page'))
 
         except UserVerification.DoesNotExist:
             return Response({'detail': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
         
+
 class CheckUserVerification(APIView):
     permission_classes = [permissions.AllowAny]
     def post(self, request):
@@ -160,9 +166,17 @@ class UserLogin(APIView):
     def post(self, request):
         data = request.data
         serializer = UserLoginSerializer(data=data)
+
         
         if serializer.is_valid(raise_exception=True):
             user = serializer.check_user(data)
+
+            if user.is_staff or user.is_reviewer:
+                role = 'Admin' if user.is_staff else 'Reviewer'
+                return Response(
+                    {'error': f'{role} users are not allowed to access this platform.'},
+                    status=status.HTTP_403_FORBIDDEN)
+
             refresh_token = RefreshToken.for_user(user)
             access_token = str(refresh_token.access_token)
 
@@ -172,19 +186,19 @@ class UserLogin(APIView):
                 'is_assumee': user.is_assumee,
                 'is_assumptor': user.is_assumptor
             }
+            
+            is_approved = False
+            try:
+                user_prof = UserProfile.objects.get(user_id=user)
+                user_app = UserApplication.objects.get(user_prof_id=user_prof)
+                is_approved = user_app.user_app_status
+            except (UserProfile.DoesNotExist,  UserApplication.DoesNotExist):
+                pass
 
-            if not user.is_staff or user.is_reviewer:
-                try:
-                    user_prof = UserProfile.objects.get(user_id=user)
-                    user_app = UserApplication.objects.get(user_prof_id=user_prof)
-                    is_approved = user_app.user_app_status
-                except UserProfile.DoesNotExist:
-                    is_approved = False
-                except UserApplication.DoesNotExist:
-                    is_approved = False
+            response = {'access': access_token, 'refresh': str(refresh_token), 'user_role': user_role, 'user': {'user_id': user.id, 'email': user.email, 'is_approved': is_approved}}
 
             login(request, user)
-            return Response({'access': access_token, 'refresh': str(refresh_token), 'user_role': user_role, 'user': {'user_id': user.id, 'email': user.email, 'is_approved': is_approved}}, status=status.HTTP_200_OK)
+            return Response(response, status=status.HTTP_200_OK)
         return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
     
 class UserGoogleLogin(APIView):
@@ -202,9 +216,23 @@ class UserGoogleLogin(APIView):
     
 class UserLogout(APIView):
     def post(self, request):
-        logout(request)
-        return Response(status=status.HTTP_200_OK)
+        try:
+            # Attempt to retrieve the refresh token from the request data
+            refresh_token = request.data.get('refresh')
 
+            # If a refresh token is provided, blacklist it
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+
+            # Perform the standard logout process
+            logout(request)
+            return Response(status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Handle errors (e.g., invalid or already blacklisted tokens)
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
 class GetUserProfile(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
@@ -236,6 +264,76 @@ class UpdateUserProfile(APIView):
             return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class UpdateUserProfilePicture(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]  
+
+    def put(self, request):
+        user_picture = request.data.get('user_prof_pic')
+
+        print(user_picture)
+
+        if not user_picture:
+                return Response({'error': 'No picture provided'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_profile = request.user.profile
+
+        folder_name = f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} ({request.user.id})"
+        
+        try:
+            # format, imgstr = img.split(';base64,') 
+            ext = 'jpg'
+            
+            image_data = ContentFile(base64.b64decode(user_picture), name=f"user{request.user.id}_{user_profile.user_prof_fname}_{user_profile.user_prof_lname}.{ext}")
+
+            print(image_data)
+
+            upload_result = cloudinary.uploader.upload(image_data, folder=f"user_images/{folder_name}")
+
+            print(upload_result)
+
+            user_profile.user_prof_pic = upload_result['secure_url'] if image_data else None
+            user_profile.save()
+
+            return Response({'message': 'Profile picture updated successfully.', 'url': upload_result['secure_url']},
+                            status=status.HTTP_200_OK)
+        except Exception as e:
+                error_message = str(e)
+
+                if "upload" in error_message.lower():
+                    error_message = "An error occurred while uploading the image. Please try again later."
+
+                return JsonResponse({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+
+class ResetPasswordLink(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(request.data)
+
+        if serializer.is_valid(raise_exception=True):
+            email = serializer.validated_data['email']
+            serializer.create_token(email)
+            serializer.send_reset_link(email)
+
+            return Response({'message': 'Reset password request sent!'}, status=status.HTTP_200_OK)
+    
+# class VerifyPasswordResetToken(APIView):
+#     permission_classes = [permissions.AllowAny]
+#     def get(self, request, user, token):
+#             user_id = request.GET.get('key')
+#             token = request.GET.get('token')
+
+#             verification = PasswordResetToken.objects.get(user=user)
+
+#             if not verification.reset_token or verification.reset_token_expires_at < timezone.now() or PasswordResetToken.DoesNotExist:
+#                 return render('base/forgot_password.html', context={'is_expired': True})
+            
+
+#             return redirect('find-password')
+        
+
 
 class ViewOtherProfile(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -338,7 +436,9 @@ class MakeOfferAPIView(APIView):
             except UserModel.DoesNotExist:
                 return Response({'error': 'Recipient not found.'}, status=status.HTTP_404_NOT_FOUND)
             
-            chat_content = f'Made an offer: ₱{price}'
+            chat_content = {'text': f'Made an offer: ₱{price}',
+                            'file': None,
+                            'file_type': None}
             
             chat_room, created = ChatRoom.objects.get_or_create(
                 chatroom_user_1=max(user, receiver, key=lambda u: u.id),
@@ -346,9 +446,8 @@ class MakeOfferAPIView(APIView):
                 defaults={'chatroom_last_message': chat_content}
             )
 
-            chat_room.chatroom_last_message = chat_content
+            chat_room.chatroom_last_message = chat_content['text']
             chat_room.save()
-
 
             chat_message_data = {
                 'chatmess_content': chat_content,
@@ -377,14 +476,34 @@ class UpdateOfferAPIView(APIView):
         offer_id = request.data.get('offer_id')
         offer_amnt = request.data.get('offer_amnt')
 
+        user = request.user
+
         try:
             offer = Offer.objects.get(offer_id=offer_id)
+
+            lister = UserModel.objects.get(pk=offer.list_id.user_id)
+
+            group = ''
+            if user.id > lister.id:
+                group = f'{user.id}-{lister.id}'
+            elif lister.id > user.id:
+                group = f'{lister.id}-{user.id}'
 
             if offer.offer_status != 'PENDING':
                 return Response({'error': 'Cannot change offer amount'}, status=status.HTTP_400_BAD_REQUEST)
             
             offer.offer_price = offer_amnt
             offer.save()
+
+            channel_layer = get_channel_layer()
+
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{group}',
+                {
+                    'type': 'offer_update',
+                    'message': f'Offer {offer_id} updated to {offer_amnt}',
+                }
+            )
 
             return Response({})
 
@@ -425,8 +544,6 @@ class GetActiveOfferAPIView(APIView):
         except Exception as e:
             print(str(e))
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# class rejectOffer
 
 class GetListingOfferAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -475,10 +592,14 @@ class UserChatRoomAPIView(APIView):
                 ),
                 last_message_date=Max('messages__chatmess_created_at'),
                 last_sender_id=Subquery(
-        ChatMessage.objects.filter(
-            chatroom_id=OuterRef('chatroom_id')
-        ).order_by('-chatmess_created_at').values('sender_id')[:1])
-            ).values('chatmate', 'chatroom_id', 'chatroom_last_message', 'last_message_date', 'last_sender_id')
+                    ChatMessage.objects.filter(
+                        chatroom_id=OuterRef('chatroom_id')
+                    ).order_by('-chatmess_created_at').values('sender_id')[:1]),
+                isRead=Subquery(
+                    ChatMessage.objects.filter(
+                        chatroom_id=OuterRef('chatroom_id')
+                    ).order_by('-chatmess_created_at').values('chatmess_is_read')[:1]),
+            ).values('chatmate', 'chatroom_id', 'chatroom_last_message', 'last_message_date', 'last_sender_id', 'isRead')
                         
             chatmates_info = UserModel.objects.filter(id__in=chatmates.values('chatmate')).values(
                 'id',
@@ -498,14 +619,15 @@ class UserChatRoomAPIView(APIView):
                     'chatmate_pic':chatmate_profile['profile__user_prof_pic'],
                     'last_message': room['chatroom_last_message'],
                     'last_message_date': room['last_message_date'],
-                    'sender_id': room['last_sender_id']
+                    'sender_id': room['last_sender_id'],
+                    'mess_isread': room['isRead']
                 })
             
             inbox = sorted(inbox, key=lambda x: x['last_message_date'], reverse=True)
 
-            # print(chatmates)
-            # print(user_id)
-            # print(inbox)
+            print(chatmates)
+            print(user_id)
+            print(inbox)
 
             return Response({'rooms': inbox, }, status=status.HTTP_200_OK)
         except Exception as e:
@@ -540,9 +662,7 @@ class CarListingCreate(generics.CreateAPIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     def perform_create(self, serializer):
-        # Assign the user from the request to the user_id field
         serializer.save(user_id=self.request.user)
-        # You can set additional fields or perform actions before saving
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CarListingByCategoryView(APIView):
@@ -569,6 +689,147 @@ class ListingDetailView(APIView):
         serializer = CarListingSerializer(listing)
         # print(serializer.data)
         return Response(serializer.data)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AddCoinsToWalletView(generics.UpdateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+    queryset = Wallet.objects.all()
+    serializer_class = WalletSerializer
+
+    def perform_update(self, serializer):
+        # Add coins to the wallet
+        instance = self.get_object()
+        coins_to_add = self.request.data.get('coins_to_add')
+        instance.wall_amnt += Decimal(coins_to_add)
+        instance.save()
+
+@method_decorator(csrf_exempt, name='dispatch')
+class GetTotalCoinsView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+    queryset = Wallet.objects.all()
+    serializer_class = WalletSerializer
+    def get_object(self):
+        user = self.request.user
+        # Fetch wallet with id 1 (or modify as needed)
+        try:
+            return Wallet.objects.get(wall_id=user.id)
+        except Wallet.DoesNotExist:
+            raise Http404("Wallet not found for this user.")
+
+class ListingByCategoryView(APIView):
+    serializer_class = ListingSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, category, *args, **kwargs):
+        queryset = Listing.objects.filter(list_content__category=category)
+        if queryset.exists():
+            serializer = self.serializer_class(queryset, many=True)
+            return Response(serializer.data)
+        else:
+            # Return an empty list if no listings are found for the category
+            return Response([], status=200)
+
+class ListingDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def get(self, request, list_id, *args, **kwargs):
+        listing = get_object_or_404(Listing, list_id=list_id)
+        serializer = ListingSerializer(listing)
+        return Response(serializer.data)
+
+class FavoritesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def get(self, request):
+        user = request.user
+        favorites = Favorite.objects.filter(user_id=user).order_by('-fav_date')
+        
+        # Serialize the favorites, which includes the nested listings
+        serializer = FavoriteSerializer(favorites, many=True)
+
+        # Log the serialized data to verify its structure
+        print('Favorites Data:', serializer.data)  # Log the serialized data
+        #print(f"Listing Content for Favorite ID {favorites.fav_id}: {favorites.list_content}")
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class FavoritesMarkView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def get(self, request):
+        user = request.user
+        favorites = Favorite.objects.filter(user_id=user)
+        
+        # Serialize the favorites, which includes the nested listings
+        serializer = FavoriteMarkSerializer(favorites, many=True)
+
+        # Log the serialized data to verify its structure
+        print('Favorites Data:', serializer.data)  # Log the serialized data
+        #print(f"Listing Content for Favorite ID {favorites.fav_id}: {favorites.list_content}")
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+
+
+      
+class AddFavoriteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def post(self, request):
+        user = request.user
+        listing_id = request.data.get('listing_id')
+
+        # Log the received listing ID
+        print(f"Received listing_id: {listing_id} from user: {user.id}")
+
+        # Fetch the listing object using the correct field name
+        listing = get_object_or_404(Listing, pk=listing_id)
+
+        # Check if the favorite already exists
+        favorite, created = Favorite.objects.get_or_create(list_id=listing, user_id=user)
+
+        if created:
+            print(f"Added favorite for user {user.id} on listing {listing_id} at {timezone.now()}")
+            return Response({'message': 'Added to favorites'}, status=status.HTTP_201_CREATED)
+        else:
+            print(f"Favorite already exists for user {user.id} on listing {listing_id}")
+            return Response({'message': 'Already in favorites'}, status=status.HTTP_400_BAD_REQUEST)
+
+class RemoveFavoriteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def delete(self, request):
+        user = request.user
+        list_id = request.data.get('list_id')  # Get the fav_id from the request
+
+        try:
+            favorite = Favorite.objects.get(list_id=list_id, user_id=user)  # Use fav_id to find the favorite
+            favorite.delete()
+            return Response({'message': 'Removed from favorites'}, status=status.HTTP_200_OK)
+        except Favorite.DoesNotExist:
+            return Response({'error': 'Favorite not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+class UserProfileView(APIView):
+
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def get(self, request, user_id):
+        try:
+            # Fetch the user profile based on the provided user_id
+            user_profile = UserProfile.objects.get(user_prof_id=user_id)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Serialize the user profile data
+        serializer = UserProfileSerializer(user_profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class AdminRegistrationAPIView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
@@ -605,3 +866,8 @@ def is_admin(user):
     return user.is_staff
 
 ###### render views ######
+
+def email_verified(request):
+    return render(request, 'base/email-verified.html')
+
+# def reset_password(request):98

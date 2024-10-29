@@ -1,0 +1,247 @@
+{% extends "base/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="d-flex align-items-center">
+    <div class="mx-auto col-10 col-md-8 col-lg-6">
+        <form id="my-form" method="POST" data-url="{% url 'update_profile' %}" enctype="multipart/form-data" class="row g-3">
+            <h2>Personal Information</h2>
+            {% csrf_token %}
+            <div id="msg" class="" style="display: none; font-size: 0.875rem; margin-bottom: 0px; margin-top: 0px;" role="alert"></div>
+            
+            {% if messages %}
+            <ul class="messages">
+            {% for message in messages %}
+            <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+            {% endfor %}
+            </ul>
+            {% endif %}
+            <br>
+                <center>
+                <img src="{{ profile.user_prof_pic }}" style="width: 150px; height: 150px;"><br>
+            </center> <br>
+            <div class="col-md-4">
+                <label for="firstname" class="form-label">Firstname</label>
+                <input type="text" class="form-control" id="firstname" name="firstname" placeholder="{{profile.user_prof_fname}}" value="{{profile.user_prof_fname}}" required readonly/>
+            </div>
+            <div class="col-md-4">
+                <label for="lastname" class="form-label">Lastname</label>
+                <input type="text" class="form-control" id="lastname" name="lastname" placeholder="{{profile.user_prof_lname}}" value="{{profile.user_prof_lname}}" required readonly/>
+            </div>
+            <div class="col-md-4">
+                <label for="gender" class="form-label">Gender</label><br>
+                <input type="text" class="form-control" id="gender" name="gender" placeholder="{{profile.user_prof_gender}}" value="{{profile.user_prof_gender}}" required readonly/>
+            </div>
+            <div class="col-md-12">
+                <label for="emailaddress" class="form-label">Email Address</label>
+                <input type="email" class="form-control" id="emailaddress" name="email" placeholder="{{user.email}}"  value="{{user.email}}" required readonly/>
+            </div>
+            <div class="col-md-12">
+                <label for="address" class="form-label">Address</label>
+                <input type="text" class="form-control" id="address" name="address" placeholder="{{profile.user_prof_address }}" value="{{profile.user_prof_address }}"required/>
+            </div>
+            <div class="col-md-12">
+                <label for="mobile" class="form-label">Mobile Number</label>
+                <input type="number" class="form-control" id="mobile" name="mobile" placeholder="{{profile.user_prof_mobile}}" value="{{profile.user_prof_mobile}}" required/>
+            </div>
+            
+            <div class="d-flex justify-content-end mb-3">
+                <div class="col-md-6">
+                    <button type="submit" class="btn btn-primary" id="update_info">Update</button>
+                    <a href="" class="btn btn-outline-primary">Cancel</a>
+                </div>
+                <div class="col-md-6 d-flex justify-content-end">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#exampleModal">Change Password</button>
+                </div>
+            </div>   
+        </form>
+    </div>
+</div>
+<div class="modal" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true" role="dialog">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exampleModalLabel">Change Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="pass_msg" class="" style="display: none; font-size: 0.875rem; margin-bottom: 0px; margin-top: 0px;" role="alert"></div>
+                <form class="row g-3" id="stock_form" method="post" data-url="{% url 'change_password' %}">
+                  {% csrf_token %}
+                  <div class="col-md-12">
+                    <label for="oldPassword">Current Password</label>
+                    <div class="input-group">
+                        <input id="oldPassword" type="password" placeholder="Old Password" name="curpass" class="form-control" aria-describedby="inputGroupPrepend" spellcheck="false" required/>
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-primary toggle" type="button" onclick="togglePassword('oldPassword')">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-12">
+                    <label for="newPassword">New Password</label>
+                    <div class="input-group">
+                        <input id="newPassword" type="password" placeholder="New Password" class="form-control" aria-describedby="inputGroupPrepend" value="" spellcheck="false" name = "newpass" required/>
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-primary toggle" type="button" onclick="togglePassword('newPassword')">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-12">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <div class="input-group">
+                        <input id="confirmPassword" type="password" placeholder="Confirm Password" class="form-control" aria-describedby="inputGroupPrepend" value="" spellcheck="false" name="confirmpass" required />
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-primary toggle" type="button" onclick="togglePassword('confirmPassword')">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div> 
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary" id="change_password">Confirm & Save</button>
+            </div>
+              </form>
+          </div>
+        </div>
+    </div>
+<script src="{% static 'scripts/required_validation.js' %}"></script>
+<script>
+    const toggles = document.querySelectorAll(".toggle");
+
+    toggles.forEach(toggle => {
+        toggle.addEventListener("click", () => {
+            const inputId = toggle.parentElement.previousElementSibling.id;
+            const input = document.getElementById(inputId);
+
+            if (input.type === "password") {
+                input.type = "text";
+                toggle.innerHTML = '<i class="fa-regular fa-eye-slash"></i>';
+            } else {
+                input.type = "password";
+                toggle.innerHTML = '<i class="fa-regular fa-eye"></i>';
+            }
+        });
+    });
+
+    function clear_input() {
+    document.getElementById("stock_form").reset();
+}
+
+    $("#update_info").click(function (event) {
+        event.preventDefault();
+        var formURL = $("#my-form").data('url');
+        var csrf = '{{csrf_token}}';
+
+        address = $("#address").val();
+        mobile = $("#mobile").val();
+
+        cur_address = $("#address").attr("placeholder");
+        cur_mobile = $("#mobile").attr("placeholder");
+        
+        var mobileRegex = /^(\+?63|0)9\d{9}$/;
+
+        if(address == null || address === '' || mobile == null || mobile === '') {
+            showMessage('msg', "Address or Mobile Number cannot be empty.", 'danger');
+            return false;
+        }
+
+        if (address == cur_address && mobile == cur_mobile) {
+            showMessage('msg', "Address or Mobile Number must not be the same as the previous.", 'danger');
+            return false;
+        }
+
+        if (!mobileRegex.test(mobile)) {
+            showMessage('msg', "Enter Valid Philippine Number", 'danger');
+            return false;
+        } 
+
+        $.post(formURL, {
+            address: address,
+            mobile: mobile,
+            csrfmiddlewaretoken: csrf,
+        })
+        .done (function (response) {
+            showMessage('msg', response.message, 'success');
+        })
+        .fail(function (jqXHR) {
+            if (jqXHR.status === 400) {
+                const errorResponse = JSON.parse(jqXHR.responseText);
+                showMessage('msg', errorResponse.error || "An error occurred.", 'danger');
+            } else {
+                showMessage('msg', "An unexpected error occurred.", 'danger');
+            }
+        });
+    });
+
+
+    $("#change_password").click(function (event) {
+        event.preventDefault();
+        var passURL = $("#stock_form").data('url');
+        var csrf = '{{csrf_token}}';
+
+        console.log(passURL);
+
+        oldPassword = $("#oldPassword").val();
+        newPassword = $("#newPassword").val();
+        confirmPassword = $("#confirmPassword").val();
+
+        if(newPassword == null || newPassword === '' || confirmPassword == null || confirmPassword === '') {
+            showMessage('pass_msg', "Please fill all required fields.", 'danger');
+            return false;
+        }
+
+        if (newPassword != confirmPassword) {
+            showMessage('pass_msg', "Passwords does not match.", 'danger');
+            return false;
+        }
+
+        $.post(passURL, {
+            curpass: oldPassword,
+            newpass: newPassword,
+            confirmpass: confirmPassword,
+            csrfmiddlewaretoken: csrf,
+        })
+        .done (function (response) {
+            if ('error' in response) {
+                showMessage('pass_msg', response.error, 'danger');
+            } else {
+                $("#exampleModal").modal("hide")
+                showMessage('msg', response.message, 'success');
+            }
+        })
+        .fail(function (jqXHR) {
+            if (jqXHR.status === 400) {
+                const errorResponse = JSON.parse(jqXHR.responseText);
+                showMessage('pass_msg', errorResponse.error || "An error occurred.", 'danger');
+            } else {
+                showMessage('pass_msg', "An unexpected error occurred.", 'danger');
+            }
+        });
+    });
+
+
+    function showMessage(id,message, type) {
+        $(`#${id}`).stop(true, true).fadeOut(0, function() {
+            $(this).text(message)
+                .removeClass('alert-danger alert-success')
+                .addClass(`p-1 text-center alert alert-${type}`)
+                .fadeIn(300);
+        }).fadeOut(3000);
+    }
+
+
+    document.addEventListener('DOMContentLoaded', function () {
+    var myModal = new bootstrap.Modal(document.getElementById('exampleModal'));
+
+    myModal._element.addEventListener('hidden.bs.modal', function () {
+        clear_input();
+    });
+});
+</script>
+{% endblock content %}

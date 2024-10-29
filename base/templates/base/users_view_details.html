@@ -1,0 +1,198 @@
+{% extends "base/base.html" %}
+{% load static %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/report_detail.css' %}">
+
+<div class="container mt-4">
+    <h2>Users Details</h2>
+    <div class="container-flex">
+        <div class="left-container">
+            <div class="card position-relative"> <!-- Add position-relative to the card -->
+                <div class="card-body">
+                    <p class="card-text"><strong>Full name:</strong> {{user_profile.user_prof_fname}} {{user_profile.user_prof_lname}} ({{user_profile.user_prof_id}})</p>
+                    <p class="card-text">
+                        <strong>Approved by:</strong> 
+                        {% if user_details.user_app_reviewer_id %}
+                            {% with reviewer=user_details.user_app_reviewer_id.userprofile %}
+                                {{ reviewer.user_prof_fname }} {{ reviewer.user_prof_lname }} 
+                            {% endwith %}
+                        {% else %}
+                            Not Reviewed
+                        {% endif %} ({{ user_details.user_app_status }})
+                    </p>
+                    <p class="card-text"><strong>Date and Time: </strong>{{user_details.user_app_approved_at}}</p>
+
+                    <img src="{{ user_profile.user_image }}" class="img-fluid fixed-size-img profile-img" alt="user-profile">
+
+                        
+                    <p class="card-text"><strong>Details: 
+                        {% if user_details.user_prof_id.user_id.is_assumptor %}
+                            Assumptor
+                        {% elif user_details.user_prof_id.user_id.is_assumee %}
+                            Assumee
+                        {% endif %}
+                    </strong></p>
+                    <ul style="font-size: 12px;">
+                        <li><strong>Gender:</strong> {{user_profile.user_prof_gender}}</li>
+                        <li><strong>Date of Birth:</strong> {{user_profile.user_prof_dob}}</li>
+                        <li><strong>Mobile Number:</strong> {{user_profile.user_prof_mobile}}</li>
+                        <li><strong>Address:</strong> {{user_profile.user_prof_address}}</li>
+                        
+                    </ul>
+
+                    <!-- List to display images -->
+                    <div class="container text-center my-3">
+                        <div class="list-wrapper">
+                            <ul class="list">
+                                <li class="item">
+                                    <div class="content">
+                                        <a href="#" class="link-text" data-bs-toggle="modal" data-bs-target="#galleryModal">See Photos</a>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="modal fade" id="galleryModal" tabindex="-1" aria-labelledby="galleryModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="galleryModalLabel">Assumptor/Assumee Image</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <img src="{{ user_profile.user_image }}" class="img-fluid rounded" alt="Image 1">
+                                    </div>
+                                    <div class="col-6">
+                                        <img src="https://res.cloudinary.com/dqfvxj9h0/image/upload/v1727607737/car_listings/fbjjq8sraiamq9q4s9ma.jpg" class="img-fluid rounded" alt="Image 2">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-container">
+            <div class="card" style="overflow-y: auto; max-height: 500px; border: 1px solid #f1f1f1; border-radius: 10px;">
+                <div class="card-body">
+                    <h2 class="card-title">Listings of {{ user_profile.user_prof_fname }} {{ user_profile.user_prof_lname }}</h2>
+                    <div class="list-group">
+                        {% for listing in user_listings %}
+                            <a href="{% url 'listing_view_details' user_id=listing.user_id.id list_id=listing.list_id %}" class="list-group-item" style="text-decoration: none; color: inherit;">
+                                <img src="{{ listing.list_content.images.0 }}" alt="Listing Image" class="listing-image" style="max-width: 100px; max-height: 100px;">
+                                <div class="listing-details">
+                                    <p style="font-size: 12px;">
+                                        {{ listing.list_content.title }} 
+                                        {% if listing.is_promoted %}
+                                            <span style="color: gold; font-size: 16px;">★</span>  <!-- Star icon for promoted listing -->
+                                        {% endif %}
+                                    </p>
+                                    <p style="font-size: 12px;">Category: {{ listing.list_content.category }}</p>
+                                </div>
+                            </a>
+                        {% empty %}
+                            <p>No listings available for this user.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Back Button -->
+    <div class="mt-3 text-center">
+        <a class="btn btn-secondary btn-sm ms-2" href="{% url 'assumemate_users_list' %}" role="button" style="margin-bottom: 15px;">
+            <i class="fa-solid fa-arrow-left"></i> Back
+        </a>
+    </div>
+</div>
+
+<style>
+    .container-flex {
+        display: flex;
+        justify-content: space-between; /* Space between the two divs */
+         /* Ensures both containers have the same height */
+    }
+    .left-container {
+        flex: 3; /* Makes the left div larger */
+        margin-right: 20px; /* Space between left and right divs */
+        position: relative; /* Allow absolute positioning inside */
+    }
+    .right-container {
+        flex: 1; /* Makes the right div smaller */
+        display: flex; /* Enables flexbox layout for the right container */
+        flex-direction: column; /* Stacks children vertically */
+    }
+    .fixed-size-img {
+        width: 50%; /* Adjusts image to fill the container */
+        height: auto; /* Maintains aspect ratio */
+        max-width: 150px; /* Sets a maximum width for the image */
+    }
+    .profile-img {
+        position: absolute; /* Positioning the image absolutely */
+        top:40px; /* Adjust this value to position vertically */
+        right: 100px; /* Adjust this value to position horizontally */
+        max-width: 125px; /* You can change this size based on your requirement */
+        height: 125px; /* Maintain aspect ratio */
+        border: 2px solid #ddd; /* Adds a light gray border */
+        border-radius: 8px; /* Rounds the corners of the border */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Adds a subtle shadow */
+    }
+    .modal-body img {
+        width: 100%; /* Ensures the image takes the full width of the column */
+        height: 200px;
+        margin-bottom: 15px; /* Set a fixed height */
+        object-fit: cover; /* Ensures the image covers the area without stretching */
+    }
+    .card {
+    border: 1px solid #f1f1f1; /* Light border around the card */
+    border-radius: 10px; /* Rounded corners */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+    background-color: #fff; /* White background */
+    }
+
+    .card-title {
+        font-size: 1.25rem; /* Adjust title size */
+        font-weight: bold; /* Bold title */
+        color: #333; /* Dark color for title */
+    }
+
+    .list-group-item {
+        display: flex; /* Use flexbox to align items */
+        align-items: center; /* Center items vertically */
+        padding: 10px; /* Padding inside each item */
+        border-bottom: 1px solid #f1f1f1; /* Light border between items */
+        color: #666; /* Light gray text for items */
+        font-size: 12px;
+    }
+
+    .listing-image {
+        width: 50px; /* Set a width for the image */
+        height: 50px; /* Set a height for the image */
+        margin-right: 10px; /* Space between image and text */
+        border-radius: 5px; /* Optional: rounded corners for the image */
+    }
+
+    .list-group-item:last-child {
+        border-bottom: none; /* Remove border for the last item */
+    }
+
+    .card-body {
+        padding: 15px; /* Padding for card body */
+    }
+
+</style>
+<!-- Bootstrap CSS and JS -->
+<link href="https://stackpath.bootstrapcdn.com/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/5.3.0/js/bootstrap.min.js"></script>
+{% endblock content %}
