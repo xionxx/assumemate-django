@@ -51,7 +51,7 @@ class UserProfile(models.Model):
     user_prof_lname = models.CharField(max_length=50)
     user_prof_gender = models.CharField(max_length=6)
     user_prof_dob = models.DateField()
-    user_prof_mobile = models.CharField(max_length=11)
+    user_prof_mobile = models.CharField(max_length=13)
     user_prof_address = models.CharField(max_length=255)
     user_prof_pic = models.URLField(null=True, blank=True)
     user_prof_valid_id = models.URLField(null=True, blank=True)
@@ -244,9 +244,9 @@ class Favorite(models.Model):
 
 class PasswordResetToken(models.Model):
     user = models.OneToOneField(UserAccount, unique=True, on_delete=models.CASCADE, db_column='user_id', related_name='reset_password')
-    reset_token = models.TextField()
-    reset_token_created_at = models.DateTimeField(auto_now_add=True)
-    reset_token_expires_at = models.DateTimeField()
+    reset_token = models.TextField(null=True, blank=True)
+    reset_token_created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    reset_token_expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'password_reset_token'

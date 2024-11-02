@@ -310,7 +310,7 @@ class ResetPasswordLink(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = PasswordResetSerializer(request.data)
+        serializer = PasswordResetSerializer(data=request.data)
 
         if serializer.is_valid(raise_exception=True):
             email = serializer.validated_data['email']

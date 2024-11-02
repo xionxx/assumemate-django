@@ -25,8 +25,10 @@ urlpatterns = [
     path('login/', views.user_login, name='user_login'),
     path('logout/', views.logout_user, name='user_logout'),
     path('forgot-password/', views.forgot_password, name='forgot_password'),
-    path('forgot-password/send-link', views.send_reset_link, name='send-reset-link'),
-    path('reset-password/', views.reset_password_page, name='reset-password'),
+    path('forgot-password/send-link/', views.send_reset_link, name='send-reset-link'),
+    path('reset-password/', views.reset_password_page, name='reset-password-page'),
+    path('reset-password/update/', views.reset_password, name='reset-password'),
+    path('reset-password/done/', views.reset_pass_done, name='reset-password-done'),
 
     path('assumemate/users/list', views.assumemate_users, name='assumemate_users_list'),
     path('assumemate/listing/', views.assumemate_listing, name='assumemate_listing'),

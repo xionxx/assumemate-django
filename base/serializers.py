@@ -1,4 +1,5 @@
 import os
+import re
 from dotenv import load_dotenv
 import secrets, string
 from django.db import IntegrityError
@@ -105,7 +106,28 @@ class UserProfileSerializer(serializers.ModelSerializer):
                   'user_prof_dob', 'user_prof_mobile', 'user_prof_address', 'user_prof_valid_id', 'user_prof_pic', 'user_id']
         read_only_fields = ['user_prof_valid_id', 'user_prof_pic']
 
+    def validate_user_prof_mobile(self, value):
+        # Define the regular expression pattern for a valid Philippine number
+        pattern = r'^\+639\d{9}$'
+        
+        # If the number starts with '09', convert it to the '+639' format
+        if value.startswith('09'):
+            value = '+63' + value[1:]
+        elif value.startswith('9'):
+            value = '+63' + value
+        elif value.startswith('63'):
+            value = '+' + value
+        
+        # Check if the modified value matches the pattern
+        if not re.match(pattern, value):
+            raise serializers.ValidationError("Please enter a valid Philippine mobile number in the format +639XXXXXXXXX")
+        
+        return value
+
+
     def create(self, validated_data):
+        validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data.get('user_prof_mobile'))
+
         user = super().create(validated_data)
 
         UserApplication.objects.create(user_prof_id=user)
@@ -113,6 +135,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return user
     
     def update(self, instance, validated_data):
+        if 'user_prof_mobile' in validated_data:
+            validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data['user_prof_mobile'])
+
         instance.user_prof_fname = validated_data.get('user_prof_fname', instance.user_prof_fname)
         instance.user_prof_lname = validated_data.get('user_prof_lname', instance.user_prof_lname)
         instance.user_prof_gender = validated_data.get('user_prof_gender', instance.user_prof_gender)
@@ -122,11 +147,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         instance.save()
 
         return instance
-
-# class UserAccountSerializer(serializers.Serializer):
-#     class Meta:
-#         model = UserModel
-#         fields = '__all__'
 
 class CheckUserVerifiedSerializer(serializers.Serializer):
     user_verification_email = serializers.EmailField()
@@ -221,15 +241,12 @@ class PasswordResetSerializer(serializers.Serializer):
         read_only_fields = ['reset_token', 'user', 'reset_token_expires_at', 'reset_token_created_at']
         # read_only_fields = ['reset_token', 'reset_token_expires_at', 'reset_token_created_at']
     
-    def check_user(self, _email):
+    def check_user(self, email):
         try:
-            user = UserModel.objects.get(email=_email)
+            user = UserModel.objects.get(email=email)
             return user
         except UserModel.DoesNotExist:
             raise serializers.ValidationError('User not found.')
-        
-    def verify_token(self):
-        return
     
     def create_token(self, email):
         user = self.check_user(email)

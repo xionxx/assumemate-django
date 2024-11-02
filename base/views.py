@@ -267,8 +267,14 @@ def reset_password_page(request):
         token = request.GET.get('token')
         is_expired = False
 
-        user_id = int(urlsafe_base64_decode(user).decode('utf-8'))
+        if not user or not token:
+            return redirect('forgot_password')
 
+        try:
+            user_id = int(urlsafe_base64_decode(user).decode('utf-8'))
+        except (TypeError, ValueError, OverflowError):
+            return redirect('forgot_password')
+        
         try:
             verification = PasswordResetToken.objects.get(user_id=user_id)
 
@@ -277,8 +283,9 @@ def reset_password_page(request):
         except PasswordResetToken.DoesNotExist:
             is_expired = True
 
-        return render(request, 'base/create_new_password.html', context={'is_expired': is_expired})
-    except:
+        return render(request, 'base/create_new_password.html', context={'is_expired': is_expired, 'key': user, 'token': token})
+    
+    except Exception as e:
         return redirect('forgot_password')
 
 def pending_accounts_view(request):
@@ -684,32 +691,56 @@ def send_reset_link(request):
 def reset_password(request):
     if request.method == 'POST':
         user_uid64 = request.GET.get('key')
+
         token = request.GET.get('token')
         newpass = request.POST.get('newpass')
-        conpass = request.POST.get('conpass')
 
-        user_id = int(urlsafe_base64_decode(user_uid64).decode('utf-8'))
+        try:
+            user_id = int(urlsafe_base64_decode(user_uid64).decode('utf-8'))
+        except (TypeError, ValueError, OverflowError):
+            return JsonResponse({'error': 'Invalid user ID.', 'status': 400})
 
         try:
             user = UserModel.objects.get(id=user_id)
         except UserModel.DoesNotExist:
             return JsonResponse({'error': 'User not found.', 'status': 404})
-
-        pass_reset = PasswordResetToken.objects.get(Q(user=user.id) & Q(reset_token=token))
-
-        if pass_reset and pass_reset.reset_token_expires_at > timezone.now():
-            user.set_password(newpass)
-            user.save()
-            
-            pass_reset.reset_token = ''
-            pass_reset.reset_token_expires_at = ''
-            pass_reset.reset_token_created_at = ''
-            pass_reset.save()
-
-            return redirect()
-        else:
-            return render(request, 'base/create_new_password.html', context={'is_expired': True})
-
         
+        try:
+            pass_reset = PasswordResetToken.objects.get(Q(user=user.id) & Q(reset_token=token))
+            if pass_reset.reset_token_expires_at < timezone.now():
+                return JsonResponse({'error': 'Link has expired', 'status': 400})
+        except PasswordResetToken.DoesNotExist:
+            return JsonResponse({'error': 'Invalid or expired token.', 'status': 400})
 
+        user.set_password(newpass)
+        user.save()
+        
+        pass_reset.reset_token = ''
+        pass_reset.reset_token_expires_at = None
+        pass_reset.reset_token_created_at = None
+        pass_reset.save()
+        
+        template_name  = 'base/pass_reset_done_template.html'
+        context = {'name': user.profile.user_prof_fname}
+        email_content =  render_to_string(
+            template_name=template_name,
+            context=context
+            )
+        
+        email_message = EmailMessage(
+        subject='[ASSUMATE Account] Password reset successful',
+        body=email_content,
+        from_email=settings.EMAIL_HOST_USER,
+        to=[user.email],
+            )
+        
+        email_message.content_subtype = 'html'
 
+        email_message.send(fail_silently=False)
+
+        return JsonResponse({'message': 'Password reset successful.', 'status': 200})
+    else:
+        return render(request, 'base/create_new_password.html', context={'is_expired': False})
+
+def reset_pass_done(request):
+    return render(request, 'base/pass_reset_done.html')
