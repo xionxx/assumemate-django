@@ -7,23 +7,29 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 class CustomUserManager(BaseUserManager):
-    def create_user(self, email, password=None):
+    def create_user(self, email, password=None, google_id=None):
         """
         Create and return a regular user with an email and password.
         """
         if not email:
             raise ValueError('An Email field must be set')
-        if not password:
-            raise ValueError('A Password field must be set')
         email = self.normalize_email(email)
-        user = self.model(email=email)
-        user.set_password(password)
+
+        user = self.model(email=email, google_id=google_id)
+
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
+
         user.save(using=self._db)
         return user
 
     def create_superuser(self, email, password=None):
         user = self.create_user(email, password)
         user.is_superuser = True
+        user.is_staff = True
+        user.is_active = True
         user.save()
 
         return user
@@ -31,11 +37,11 @@ class CustomUserManager(BaseUserManager):
 class UserAccount(AbstractUser):
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, unique=True, blank=True, null=True)
+    google_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
     is_reviewer = models.BooleanField(default=False)
     is_assumee = models.BooleanField(default=False)
     is_assumptor = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
-    # auth_provider = models.CharField(max_length=20, default='google')
 
     objects = CustomUserManager()
 
@@ -154,10 +160,9 @@ class SuspendedUser(models.Model):
 
 class ListingApplication(models.Model):
     list_app_id = models.AutoField(primary_key=True)  # Auto-incrementing primary key
-    list_app_status = models.CharField(max_length=20)  # E.g., Approved, Pending, Declined
+    list_app_status = models.CharField(max_length=20, default='PENDING')  # E.g., Approved, Pending, Declined
     list_app_date = models.DateTimeField(default=timezone.now)  # Date of application
     list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  # Foreign key to Listing
-    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, db_column='user_id', related_name='listing_applications')  # Foreign key to UserAccount
     list_app_reviewer_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, blank=True, null=True, db_column='user_app_reviewer_id', related_name='listing_reviews')  # Add related_name
     list_reason = models.CharField(max_length=255, null=True)
 
@@ -165,13 +170,12 @@ class ListingApplication(models.Model):
         db_table = 'listing_application'
 
         
-class Wallet(models.Model):
-    wall_id = models.BigAutoField(primary_key=True, editable=False)
-    wall_amnt = models.DecimalField(max_digits=10, decimal_places=2)
-    # user_id = models.ForeignKey(UserAccount, on_delete=models.PROTECT, db_column='user_id')
+class Wallet(models.Model):    
+    user_id = models.OneToOneField(UserAccount, primary_key=True, editable=False, on_delete=models.PROTECT, db_column='user_id')
+    wall_amnt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def __str__(self):
-        return f"Wallet {self.wall_id}: {self.wall_amnt} coins"
+        return f"User {self.user_id} wallet: {self.wall_amnt} coins"
     
     class Meta:
         db_table = 'wallet'

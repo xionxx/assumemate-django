@@ -33,7 +33,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG') == 'True'
 
-ALLOWED_HOSTS = ['192.168.1.9', '172.16.21.149', '192.168.254.131', '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = ['192.168.1.9', '172.16.21.149', '192.168.225.98', '192.168.254.131', '127.0.0.1', 'localhost']
 AUTH_USER_MODEL = 'base.UserAccount'
 CORS_ALLOW_ALL_ORIGINS = True 
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
@@ -53,6 +53,8 @@ REST_FRAMEWORK = {
 
 
 # Application definition
+
+# SITE_ID=1
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -92,11 +94,33 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
 
+# SOCIALACCOUNT_PROVIDERS = {
+#     'google': {
+#         'SCOPE' : [
+#             'profile',
+#             'email',
+#         ],
+#         'APP': {
+#             'client_id': os.environ['CLIENT_ID'],
+#             'secret': os.environ['CLIENT_SECRET'],
+#         },
+#         'AUTH_PARAMS': {
+#             'access_type':'online',
+#         },
+#         'METHOD': 'oauth2'
+#     }
+# }
+
 cloudinary.config( 
   	cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME'),
   	api_key = os.getenv('CLOUDINARY_API_KEY'),
   	api_secret = os.getenv('CLOUDINARY_API_SECRET'),
 )
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    # 'allauth.account.auth_backends.AuthenticationBackend'
+]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -201,3 +225,6 @@ EMAIL_PORT = 587 #mailhog port
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+
+# LOGIN_REDIRECT_URL = '/'
+# LOGOUT_REDIRECT_URL = 'login/'

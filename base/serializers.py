@@ -2,6 +2,7 @@ import os
 import re
 from dotenv import load_dotenv
 import secrets, string
+from django.db.models import Q
 from django.db import IntegrityError
 from django.utils import timezone
 from datetime import timedelta
@@ -10,6 +11,8 @@ from django.shortcuts import get_object_or_404
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.conf import settings
+from google.auth.transport import requests
+from google.oauth2 import id_token as token_auth
 from rest_framework import serializers
 from .models import Favorite, Listing, Offer, PasswordResetToken, UserProfile, UserVerification, UserApplication, ChatMessage, ChatRoom, Listing, Wallet
 from django.contrib.auth import get_user_model, authenticate
@@ -24,33 +27,61 @@ UserModel = get_user_model()
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField()
+    google_id = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    password = serializers.CharField(write_only=True, required=False)
     
     class Meta:
         model = UserModel
-        fields = ['id', 'email', 'password', 'is_staff', 'is_reviewer', 'is_assumee', 'is_assumptor']
+        fields = ['id', 'email', 'password', 'google_id', 'is_staff', 'is_reviewer', 'is_assumee', 'is_assumptor']
+
+    def validate(self, attrs):
+        google_id = attrs.get('google_id')
+        password = attrs.get('password')
+        
+        if google_id:
+            if UserModel.objects.filter(google_id=google_id).exists():
+                raise serializers.ValidationError('Google account already connected to an existing user.')
+        
+        elif not password:
+            raise serializers.ValidationError('Password is required.')
+        
+        return attrs
 
     def create(self, validated_data):
-        if not validated_data['is_staff'] or validated_data['is_reviewer']:
+        email = validated_data['email']
+        google_id = validated_data.get('google_id')
+        password = validated_data.get('password')
+        requires_verification = not validated_data.get('is_staff', False) or validated_data.get('is_reviewer', False)
+
+        if requires_verification and not google_id:
             try:
-                email_verified_user =  UserVerification.objects.get(user_verification_email=validated_data['email'], user_verification_is_verified=True)
+                email_verified_user =  UserVerification.objects.get(user_verification_email=email, user_verification_is_verified=True)
             except UserVerification.DoesNotExist:
                 raise serializers.ValidationError('Email has not been verified yet.')
-                
-        user_obj = UserModel.objects.create_user(email=validated_data['email'], password=validated_data['password'])
-        user_obj.is_staff = validated_data['is_staff']
-        user_obj.is_assumee = validated_data['is_assumee']
-        user_obj.is_assumptor = validated_data['is_assumptor']
-        user_obj.is_reviewer = validated_data['is_reviewer']
+            
+        if google_id:
+            user_obj = UserModel.objects.create_user(email=email, google_id=google_id)
+        else:
+            user_obj = UserModel.objects.create_user(email=email, password=password)
+
+        user_obj.is_staff = validated_data.get('is_staff', False)
+        user_obj.is_assumee = validated_data.get('is_assumee', False)
+        user_obj.is_assumptor = validated_data.get('is_assumptor', False)
+        user_obj.is_reviewer = validated_data.get('is_reviewer', False)
         user_obj.save()
 
-        if not validated_data['is_staff'] or validated_data['is_reviewer']:
+        if requires_verification and not google_id:
             email_verified_user.user_id = user_obj
             email_verified_user.save()
+
+        if user_obj.is_assumptor:
+            Wallet.objects.create(user_id=user_obj)
 
         return user_obj
     
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+
         if password:
             instance.set_password(password)
 
@@ -107,10 +138,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['user_prof_valid_id', 'user_prof_pic']
 
     def validate_user_prof_mobile(self, value):
-        # Define the regular expression pattern for a valid Philippine number
         pattern = r'^\+639\d{9}$'
         
-        # If the number starts with '09', convert it to the '+639' format
         if value.startswith('09'):
             value = '+63' + value[1:]
         elif value.startswith('9'):
@@ -118,12 +147,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
         elif value.startswith('63'):
             value = '+' + value
         
-        # Check if the modified value matches the pattern
         if not re.match(pattern, value):
             raise serializers.ValidationError("Please enter a valid Philippine mobile number in the format +639XXXXXXXXX")
         
         return value
-
 
     def create(self, validated_data):
         validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data.get('user_prof_mobile'))
@@ -215,23 +242,33 @@ class EmailVerificationSerializer(serializers.ModelSerializer):
 
 class UserLoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    password = serializers.CharField()
+    password = serializers.CharField(write_only=True)
 
     def check_user(self, validated_data):
-        user = authenticate(username=validated_data['email'], password=validated_data['password'])
+        user = UserModel.objects.filter(email=validated_data['email']).first()
+
         if not user:
             raise serializers.ValidationError({'error': 'Incorrect email or password'})
         
-        return user
+        if not user.has_usable_password():
+            raise serializers.ValidationError({'error': 'Your account is connected to Google: Use the Google button to login'})
+        
+        authenticated_user = authenticate(username=validated_data['email'], password=validated_data['password'])
+
+        if not authenticated_user:
+            raise serializers.ValidationError({'error': 'Incorrect email or password'})
+
+        return authenticated_user
+               
     
-    def to_representation(self, instance):
-        user = self.check_user(self.validated_data)
-        return {
-            'email': user.email,
-            'is_reviewer': user.is_reviewer,
-            'is_assumee': user.is_assumee,
-            'is_assumptor': user.is_assumptor
-        }
+    # def to_representation(self, instance):
+    #     user = self.check_user(self.validated_data)
+    #     return {
+    #         'email': user.email,
+    #         'is_reviewer': user.is_reviewer,
+    #         'is_assumee': user.is_assumee,
+    #         'is_assumptor': user.is_assumptor
+    #     }
     
 class PasswordResetSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -303,17 +340,103 @@ class ChatUserSerializer(serializers.ModelSerializer):
         fieds = ['user_prof_lname', 'user_prof_fname', 'user_prof_pic', 'user_id']    
     
 class UserGoogleLoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    token = serializers.CharField()
 
-    def check_user(self, _email):
-        user_exist = UserModel.objects.get(email=_email)
-        
-        if user_exist:
-            user = authenticate(username=user_exist.email, password=user_exist.password)
+    def check_user(self, validated_data):
+        token = validated_data.get('token')
+
+        try:
+            clientId = os.getenv('OAUTH_CLIENT_ID')
+
+            print(clientId)
+            
+            id_info = token_auth.verify_oauth2_token(token, requests.Request(), clientId)
+
+            google_id = id_info['sub']
+            email = id_info['email']
+
+            user = UserModel.objects.filter(Q(google_id=google_id) & Q(email = email)).first()
+
             if not user:
-                return serializers.ValidationError('User not found')
+                return serializers.ValidationError({'error': 'User not found'})
+            
+            return user
 
-        return user 
+        except ValueError as e:
+            return serializers.ValidationError({'error': f'Invalid token: {e}'})
+
+
+# class GoogleSignInCheckSerializer(serializers.Serializer):
+#     google_id = serializers.CharField(max_length=255, required=False)
+#     email = serializers.EmailField(required=False)
+
+#     def validate(self, attrs):
+#         if not attrs.get('google_id') and not attrs.get('email'):
+#             raise serializers.ValidationError('Google ID and Email are required.')
+
+#         return attrs
+
+#     def check_email(self):
+#         google_id = self.validated_data.get('google_id')
+#         email = self.validated_data.get('email')
+
+#         user = None
+#         if google_id:
+#             user = UserModel.objects.filter(google_id=google_id).first()
+        
+#         if email:
+#             user = UserModel.objects.filter(email=email).first()
+
+#         exists = user is not None
+
+#         return exists, self.validated_data
+
+# class GoogleSignInCheckSerializer(serializers.Serializer):
+#     token = serializers.CharField()
+
+#     def validate(self, attrs):
+#         token = attrs.get('token')
+#         id_info = self.validate_token(token)
+        
+#         attrs['google_id'] = id_info.get('sub')
+#         attrs['email'] = id_info.get('email')
+
+#         print(attrs['google_id'])
+
+#         return attrs
+
+#     def validate_token(self, token):
+#         clientId = os.getenv('CLIENT_ID')
+        
+#         try:
+#             request = requests.Request()
+            
+#             id_info = token_auth.verify_oauth2_token(token, request, clientId)
+#             print(id_info)
+        
+#             email = id_info.get('email')
+#             google_id = id_info.get('sub')
+
+#             print(google_id)
+
+#             if 'email' not in id_info or 'sub' not in id_info:
+#                 raise serializers.ValidationError("Token is missing required fields.")
+
+#             return id_info
+#         except ValueError:
+#             raise serializers.ValidationError("Invalid ID token")
+
+#     def check_email(self):
+#         google_id = self.validated_data.get('google_id')
+#         email = self.validated_data.get('email')
+
+#         print(google_id)
+
+#         user = UserModel.objects.filter(google_id=google_id).first() or UserModel.objects.filter(email=email).first()
+
+#         exists = user is not None
+
+#         return exists, self.validated_data
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -333,7 +456,7 @@ class CarListingSerializer(serializers.ModelSerializer):
 class WalletSerializer(serializers.ModelSerializer):
     class Meta:
         model = Wallet
-        fields = ['wall_id', 'wall_amnt']
+        fields = ['user_id', 'wall_amnt']
 
 class ListingSerializer(serializers.ModelSerializer):
 

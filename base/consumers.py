@@ -1,3 +1,4 @@
+import locale
 import uuid
 from django.utils import timezone
 import json
@@ -168,7 +169,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             offer_amount = data['offer_amount']
             user_id = data['user_id']
 
-            message = f'Change offer: ₱{offer_amount}'
+            locale.setlocale(locale.LC_ALL, 'en_PH.UTF-8')
+            # double_amnt = double
+            formatted_amount = locale.currency(float(offer_amount), grouping=True)
+
+            print(formatted_amount)
+
+            message = f'Change offer: {formatted_amount}'
 
             messages = {
                 'text': message,

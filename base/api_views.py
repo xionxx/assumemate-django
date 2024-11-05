@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.db.models import F, Max, OuterRef, Subquery, Q, Case, When
 # from .permissions import IsAdminUser
-from .models import UserProfile, UserVerification, ChatRoom, ChatMessage, Wallet
+from .models import UserProfile, UserVerification, ChatRoom, ChatMessage, Wallet, ListingApplication
 from .serializers import *
 from rest_framework import status, permissions, generics
 from rest_framework.views import APIView
@@ -25,7 +25,10 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from google.oauth2 import id_token as token_auth
+from google.auth.transport import requests
 
+load_dotenv()
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
@@ -149,7 +152,6 @@ class VerifyEmail(APIView):
         except UserVerification.DoesNotExist:
             return Response({'detail': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
         
-
 class CheckUserVerification(APIView):
     permission_classes = [permissions.AllowAny]
     def post(self, request):
@@ -165,11 +167,18 @@ class UserLogin(APIView):
 
     def post(self, request):
         data = request.data
-        serializer = UserLoginSerializer(data=data)
 
-        
+        print(data)
+
+        if 'token' in data:
+            serializer = UserGoogleLoginSerializer(data=data)
+        else:
+            serializer = UserLoginSerializer(data=data)
+
         if serializer.is_valid(raise_exception=True):
             user = serializer.check_user(data)
+
+            print(user)
 
             if user.is_staff or user.is_reviewer:
                 role = 'Admin' if user.is_staff else 'Reviewer'
@@ -201,19 +210,57 @@ class UserLogin(APIView):
             return Response(response, status=status.HTTP_200_OK)
         return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
     
-class UserGoogleLogin(APIView):
-    def post(self, request):
-        serializer = UserGoogleLoginSerializer(data=request.data)
+# class UserGoogleLogin(APIView):
+#     def post(self, request):
+#         data = request.data
+#         serializer = UserGoogleLoginSerializer(data=data)
         
-        if serializer.is_valid(raise_exception=True):
-            email = serializer.validated_data['email']
-            user = serializer.check_user(email)
-            token, created = Token.objects.get_or_create(user=user)
+#         if serializer.is_valid(raise_exception=True):
+#             user = serializer.check_user(data)
+#             token, created = Token.objects.get_or_create(user=user)
 
-            return Response({'token': token.key, 'user': serializer.data}, status=status.HTTP_200_OK)
+#             return Response({'token': token.key, 'user': serializer.data}, status=status.HTTP_200_OK)
         
-        return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
+#         return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
     
+# class CheckGoogleEmail(APIView):
+#     permission_classes = [permissions.AllowAny]
+#     def post(self, request):
+#         serializer = GoogleSignInCheckSerializer(data=request.data)
+
+#         # print(request.data['token'])
+
+#         if serializer.is_valid(raise_exception=True):
+#             exists, data = serializer.check_email()
+
+#             print(exists)
+
+#             if not exists:
+#                 return Response({'puta': data['google_id'], 'email': data['email']}, status=status.HTTP_200_OK)
+#             else:
+#                 return Response({'error': 'Account already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+#         else: 
+#             print(serializer.errors)
+#             return Response({'error': 'Credentials not provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+# class CheckGoogleEmail(APIView):
+#     permission_classes = [permissions.AllowAny]
+#     def post(self, request):
+#         serializer = GoogleSignInCheckSerializer(data=request.data)
+
+#         if serializer.is_valid(raise_exception=True):
+#             print(exists)
+#             exists, data = serializer.check_email()
+
+#             print(exists)
+
+#             if not exists:
+#                 return Response({'credentials': data}, status=status.HTTP_200_OK)
+#             else:
+#                 return Response({'error': 'Account already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         return Response({'error': 'Credentials not provided'}, status=status.HTTP_400_BAD_REQUEST)
+
 class UserLogout(APIView):
     def post(self, request):
         try:
@@ -544,6 +591,26 @@ class GetActiveOfferAPIView(APIView):
         except Exception as e:
             print(str(e))
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class AssumptorListOffers(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        try:
+            user = request.user
+
+            offers = Offer.objects.filter(list_id__user_id=user)
+
+            serialized_offers = OfferSerializer(offers, many=True).data
+
+            print(offers)
+
+            return Response({'offers': serialized_offers}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': f'Unexpected error occured: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class GetListingOfferAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -643,7 +710,9 @@ class CarListingCreate(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)  # Validate the data
-        self.perform_create(serializer)
+        list_instance = self.perform_create(serializer)
+
+        ListingApplication.objects.create(list_id=list_instance)
         
         # Fetch the user's wallet (modify the wall_id as needed)
         # wallet = Wallet.objects.get(wall_id=1)  # You may want to get the user's wallet dynamically
@@ -662,7 +731,9 @@ class CarListingCreate(generics.CreateAPIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     def perform_create(self, serializer):
-        serializer.save(user_id=self.request.user)
+        instance = serializer.save(user_id=self.request.user)
+        
+        return instance
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CarListingByCategoryView(APIView):
@@ -714,7 +785,7 @@ class GetTotalCoinsView(generics.RetrieveAPIView):
         user = self.request.user
         # Fetch wallet with id 1 (or modify as needed)
         try:
-            return Wallet.objects.get(wall_id=user.id)
+            return Wallet.objects.get(user_id=user.id)
         except Wallet.DoesNotExist:
             raise Http404("Wallet not found for this user.")
 
@@ -871,3 +942,36 @@ def email_verified(request):
     return render(request, 'base/email-verified.html')
 
 # def reset_password(request):98
+
+class CheckGoogleEmail(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        token = request.data.get('token')
+
+        # print(token)
+
+        if not token:
+            return JsonResponse({'error': 'No token provided'}, status=400)
+
+        try:
+            clientId = os.getenv('OAUTH_CLIENT_ID')
+
+            print(clientId)
+            
+            id_info = token_auth.verify_oauth2_token(token, requests.Request(), clientId)
+
+            print(id_info)
+
+            google_id = id_info['sub'] 
+            email = id_info['email']
+
+            user = UserModel.objects.filter(google_id=google_id).first() or UserModel.objects.filter(email=email).first()
+
+            if user:
+                return Response({'error': 'Account already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return JsonResponse({'status': 'success', 'google_id': google_id, 'email': email}, status=status.HTTP_200_OK)
+        except ValueError as e:
+            print(e)
+            return JsonResponse({'error': f'Invalid token: {e}'}, status=status.HTTP_400_BAD_REQUEST)
