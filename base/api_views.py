@@ -1,4 +1,5 @@
 from decimal import Decimal
+import locale
 from django.shortcuts import redirect, render
 from django.urls import reverse
 import requests, base64, cloudinary
@@ -432,13 +433,13 @@ class GetMessageAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    def get(self, request, chatroom_id):
+    def get(self, request, receiver_id):
         # print(receiver_id)
         try:
             user_id = request.user.id
-            room_id = chatroom_id
 
-            room = ChatRoom.objects.get(chatroom_id=room_id)
+            user1, user2 = (user_id, receiver_id) if user_id > receiver_id else (receiver_id, user_id)
+            room = ChatRoom.objects.get(chatroom_user_1=user1, chatroom_user_2=user2)
             room_messages = ChatMessage.objects.filter(chatroom_id=room)\
             .order_by('chatmess_created_at')\
             .values('sender_id', 'chatmess_content', 'chatmess_created_at', 'chatmess_is_read')
@@ -446,7 +447,7 @@ class GetMessageAPIView(APIView):
 
             # print(room_messages)
 
-            return Response({'messages': list(room_messages)}, status=status.HTTP_200_OK)
+            return Response({'messages': list(room_messages), 'room_id': f'{room.chatroom_id}'}, status=status.HTTP_200_OK)
         except ChatRoom.DoesNotExist:
             return Response({'detail': 'Chat room not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -467,6 +468,11 @@ class MakeOfferAPIView(APIView):
 
         receiver_id = list.user_id.id
         price = request.data.get('offer_price')
+        locale.setlocale(locale.LC_ALL, 'en_PH.UTF-8')
+            # double_amnt = double
+        formatted_amount = locale.currency(float(price), grouping=True)
+
+        print(formatted_amount)
 
         existing_offer = Offer.objects.filter(list_id__user_id=receiver_id, user_id=user, offer_status__in=['PENDING', 'ACCEPTED']).first()
 
@@ -478,12 +484,14 @@ class MakeOfferAPIView(APIView):
 
 
         try:
+            Offer.objects.create(offer_price=price, list_id=list, user_id=user)
+            
             try:
                 receiver = UserModel.objects.get(pk=receiver_id)
             except UserModel.DoesNotExist:
                 return Response({'error': 'Recipient not found.'}, status=status.HTTP_404_NOT_FOUND)
             
-            chat_content = {'text': f'Made an offer: ₱{price}',
+            chat_content = {'text': f'Made an offer: {formatted_amount}',
                             'file': None,
                             'file_type': None}
             
@@ -502,12 +510,10 @@ class MakeOfferAPIView(APIView):
                 'chatroom_id': chat_room.chatroom_id
             }
 
-            Offer.objects.create(offer_price=price, list_id=list, user_id=user)
-
             serializer = MessageSerializer(data=chat_message_data)
             if serializer.is_valid():
                 serializer.save()
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                return Response({'user_id': receiver_id, 'room_id': chat_room.chatroom_id}, status=status.HTTP_200_OK)
             else:
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)                
 
@@ -598,13 +604,32 @@ class AssumptorListOffers(APIView):
 
     def get(self, request):
         try:
-            user = request.user
+            assumptor = request.user
 
-            offers = Offer.objects.filter(list_id__user_id=user)
+            offers = Offer.objects.filter(Q(list_id__user_id=assumptor) and Q(offer_status='PENDING'))
+
 
             serialized_offers = OfferSerializer(offers, many=True).data
 
-            print(offers)
+            try:
+
+                for offer in serialized_offers:
+                    listing = Listing.objects.get(list_id=offer['list_id'])
+                    listing_deets = CarListingSerializer(listing).data
+                    offer['list_image'] = listing_deets['list_content']['images'][0]
+
+                    user = UserProfile.objects.get(user_id=offer['user_id'])
+                    user_prof = UserProfileSerializer(user).data
+                    offer['user_fullname'] = user_prof['user_prof_fname'] + ' ' + user_prof['user_prof_lname']
+
+                    chat_room = ChatRoom.objects.get(
+                    chatroom_user_1=max(user.user_id, assumptor, key=lambda u: u.id),
+                    chatroom_user_2=min(user.user_id, assumptor, key=lambda u: u.id)
+                        )
+                    
+                    offer['chatroom_id'] = chat_room.chatroom_id
+            except Offer.DoesNotExist or Listing.DoesNotExist or UserProfile.DoesNotExist or ChatRoom.DoesNotExist or UserModel.DoesNotExist:
+                return Response({'error': 'Resquest invalid'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             return Response({'offers': serialized_offers}, status=status.HTTP_200_OK)
 
@@ -843,9 +868,6 @@ class FavoritesMarkView(APIView):
         #print(f"Listing Content for Favorite ID {favorites.fav_id}: {favorites.list_content}")
         return Response(serializer.data, status=status.HTTP_200_OK)
     
-
-
-      
 class AddFavoriteView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication] 

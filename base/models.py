@@ -191,7 +191,7 @@ class PromoteListing(models.Model):
 
 class Offer(models.Model):
     offer_id = models.BigAutoField(primary_key=True, editable=False)
-    offer_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    offer_price = models.DecimalField(max_digits=12, decimal_places=2, null=True)
     offer_status = models.CharField(max_length=15, default='PENDING')
     offer_created_at = models.DateTimeField(auto_now_add=True, null=True)
     offer_updated_at = models.DateTimeField(auto_now=True, null=True)
