@@ -1,5 +1,6 @@
 from decimal import Decimal
 import locale
+import random
 from django.shortcuts import redirect, render
 from django.urls import reverse
 import requests, base64, cloudinary
@@ -7,7 +8,7 @@ from smtplib import SMTPConnectError, SMTPException
 # from django.contrib.auth.decorators import user_passes_test
 from django.utils import timezone
 from django.http import Http404, HttpResponseRedirect, JsonResponse
-from django.db.models import F, Max, OuterRef, Subquery, Q, Case, When
+from django.db.models import F, Max, OuterRef, Subquery, Q, Case, When, Count
 # from .permissions import IsAdminUser
 from .models import UserProfile, UserVerification, ChatRoom, ChatMessage, Wallet, ListingApplication
 from .serializers import *
@@ -835,6 +836,47 @@ class ListingDetailView(APIView):
         listing = get_object_or_404(Listing, list_id=list_id)
         serializer = ListingSerializer(listing)
         return Response(serializer.data)
+    
+class AssumpotorListings(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def get(self, request):
+        user = request.user.id
+
+
+        listings = Listing.objects.filter(user_id=user)
+
+        if listings.exists():
+            serializer = ListingSerializer(listings, many=True)
+            
+            return Response({'listings': serializer.data}, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'No listing available'}, status=status.HTTP_204_NO_CONTENT)
+    
+class RandomListingListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def get(self, request):
+        user_id = request.user.id  # Get the authenticated user's ID
+
+        # Count listings and determine how many to return
+        total_listings = Listing.objects.exclude(user_id=user_id).aggregate(count=Count('user_id'))['count']
+        listings_to_return = 10 if total_listings >= 10 else total_listings
+        
+        # Fetch all listings excluding the user's own listings and select a random sample
+        all_listings = list(Listing.objects.exclude(user_id=user_id))
+        
+        # Ensure there are listings to sample from
+        if not all_listings:
+            return Response([], status=status.HTTP_200_OK)  # Return an empty list if no listings available
+
+        random_listings = random.sample(all_listings, min(listings_to_return, len(all_listings)))
+
+        # Serialize and return the random listings
+        serializer = ListingSerializer(random_listings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class FavoritesView(APIView):
     permission_classes = [permissions.IsAuthenticated]

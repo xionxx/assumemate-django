@@ -204,8 +204,8 @@ class EmailVerificationSerializer(serializers.ModelSerializer):
             return verification_record
     
     def send_verification_email(self, request, email, verification_code):
-
-        verification_key = f'http://192.168.1.9:8000/api/email-verify/{verification_code}/'
+        base_url = os.getenv('API_URL')
+        verification_key = f'{base_url}/email-verify/{verification_code}/'
         html_msg = f"""
         <html>
         <body>
