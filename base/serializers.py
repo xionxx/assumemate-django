@@ -133,9 +133,9 @@ class AdminRegistrationSerializer(serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['user_prof_id', 'user_prof_lname', 'user_prof_fname', 'user_prof_gender', 
-                  'user_prof_dob', 'user_prof_mobile', 'user_prof_address', 'user_prof_valid_id', 'user_prof_pic', 'user_id']
-        read_only_fields = ['user_prof_valid_id', 'user_prof_pic']
+        fields = ['user_prof_lname', 'user_prof_fname', 'user_prof_gender', 
+                  'user_prof_dob', 'user_prof_mobile', 'user_prof_address', 'user_prof_valid_id', 'user_prof_pic']
+        read_only_fields = ['user_id', 'user_prof_valid_id', 'user_prof_pic']
 
     def validate_user_prof_mobile(self, value):
         pattern = r'^\+639\d{9}$'
@@ -153,11 +153,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        print(validated_data.get('user_id'))
+        # userId = validated_data.get('user_prof_mobile')
         validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data.get('user_prof_mobile'))
 
+        # validated_data['user_id'] = UserModel.objects.get(id=userId)
         user = super().create(validated_data)
-
-        UserApplication.objects.create(user_prof_id=user)
 
         return user
     
@@ -205,7 +206,7 @@ class EmailVerificationSerializer(serializers.ModelSerializer):
     
     def send_verification_email(self, request, email, verification_code):
         base_url = os.getenv('API_URL')
-        verification_key = f'{base_url}/email-verify/{verification_code}/'
+        verification_key = f'{base_url}/api/email-verify/{verification_code}/'
         html_msg = f"""
         <html>
         <body>
@@ -358,7 +359,7 @@ class UserGoogleLoginSerializer(serializers.Serializer):
             user = UserModel.objects.filter(Q(google_id=google_id) & Q(email = email)).first()
 
             if not user:
-                return serializers.ValidationError({'error': 'User not found'})
+                return serializers.ValidationError({'error': 'No user associated with the google found'})
             
             return user
 
@@ -456,7 +457,8 @@ class CarListingSerializer(serializers.ModelSerializer):
 class WalletSerializer(serializers.ModelSerializer):
     class Meta:
         model = Wallet
-        fields = ['user_id', 'wall_amnt']
+        fields = ['wall_amnt']
+        read_only_fields=['user_id']
 
 class ListingSerializer(serializers.ModelSerializer):
 

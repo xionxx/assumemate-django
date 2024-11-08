@@ -29,6 +29,9 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from google.oauth2 import id_token as token_auth
 from google.auth.transport import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -41,6 +44,7 @@ class UserRegister(APIView):
         serializer = UserRegisterSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
             user = serializer.save()
+            
             refresh_token = RefreshToken.for_user(user)
             access_token = str(refresh_token.access_token)
             
@@ -50,12 +54,16 @@ class UserRegister(APIView):
 class UserCreateProfile(APIView):
     permission_classes = [permissions.AllowAny]
     def post(self, request):
-        serializer = UserProfileSerializer(data=request.data)
+        data = request.data
+        user = UserModel.objects.get(id=data['user_id'])
+        serializer = UserProfileSerializer(data=data)
         user_valid_id = request.data.get('user_prof_valid_id')
         user_picture = request.data.get('user_prof_pic')
 
         if serializer.is_valid(raise_exception=True):
-            user_profile = serializer.save()
+            user_profile = serializer.save(user_id=user)
+
+            UserApplication.objects.create(user_id=user)
 
             user = user_profile.user_id
 
@@ -200,11 +208,12 @@ class UserLogin(APIView):
             
             is_approved = False
             try:
-                user_prof = UserProfile.objects.get(user_id=user)
-                user_app = UserApplication.objects.get(user_prof_id=user_prof)
+                user_app = UserApplication.objects.get(user_id=user)
+                print(user_app.user_app_status)
                 is_approved = user_app.user_app_status
+                print(is_approved)
             except (UserProfile.DoesNotExist,  UserApplication.DoesNotExist):
-                pass
+                return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
 
             response = {'access': access_token, 'refresh': str(refresh_token), 'user_role': user_role, 'user': {'user_id': user.id, 'email': user.email, 'is_approved': is_approved}}
 
@@ -391,9 +400,15 @@ class ViewOtherProfile(APIView):
     def get(self, request, user_id):
         try:
             user_profile = UserProfile.objects.get(user_id=user_id)
+            user_status = UserApplication.objects.get(user_id=user_id)
             prof_serializer = UserProfileSerializer(user_profile)
 
-            return Response({'user_profile': prof_serializer.data}, status=status.HTTP_200_OK)
+            profile_data = prof_serializer.data
+
+            profile_data['application_status'] = user_status.user_app_status
+            print(profile_data['application_status'])
+
+            return Response({'user_profile': profile_data}, status=status.HTTP_200_OK)
         except UserModel.DoesNotExist:
             return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
         except UserProfile.DoesNotExist:
@@ -811,7 +826,7 @@ class GetTotalCoinsView(generics.RetrieveAPIView):
         user = self.request.user
         # Fetch wallet with id 1 (or modify as needed)
         try:
-            return Wallet.objects.get(user_id=user.id)
+            return Wallet.objects.get(user_id=user)
         except Wallet.DoesNotExist:
             raise Http404("Wallet not found for this user.")
 
@@ -837,13 +852,29 @@ class ListingDetailView(APIView):
         serializer = ListingSerializer(listing)
         return Response(serializer.data)
     
-class AssumpotorListings(APIView):
+class AssumptorListings(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication] 
 
     def get(self, request):
         user = request.user.id
 
+
+        listings = Listing.objects.filter(user_id=user)
+
+        if listings.exists():
+            serializer = ListingSerializer(listings, many=True)
+            
+            return Response({'listings': serializer.data}, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'No listing available'}, status=status.HTTP_204_NO_CONTENT)
+        
+class AssumptorViewListings(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def get(self, request, user_id):
+        user = UserModel.objects.get(id=user_id)
 
         listings = Listing.objects.filter(user_id=user)
 
@@ -957,7 +988,7 @@ class UserProfileView(APIView):
     def get(self, request, user_id):
         try:
             # Fetch the user profile based on the provided user_id
-            user_profile = UserProfile.objects.get(user_prof_id=user_id)
+            user_profile = UserProfile.objects.get(user_id=user_id)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -996,6 +1027,34 @@ class AdminRegistrationAPIView(generics.CreateAPIView):
         else:
             return Response({'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
+@method_decorator(csrf_exempt, name='dispatch')         
+class ListingSearchView(APIView):
+    """
+    View to search listings or return all listings when no search query is provided.
+    """
+    serializer_class = CarListingSerializer
+    permission_classes = [permissions.AllowAny] 
+
+    def get(self, request, *args, **kwargs):
+        query = self.request.query_params.get('query', None)
+        category = self.request.query_params.get('category', None)  
+        logger.debug(f'Received search query: {query}, category: {category}')
+
+        listings = Listing.objects.all()  
+        if category:
+            listings = listings.filter(category__name=category)  
+        if query:
+            listings = listings.filter(title__icontains=query) 
+        
+        logger.debug(f'Listings found: {listings.count()}') 
+
+        if not listings.exists():
+            logger.warning('No listings found') 
+            return Response({'message': 'No listings found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.serializer_class(listings, many=True)
+        logger.debug(f'Serialized data: {serializer.data}') 
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 def is_admin(user):
     return user.is_staff

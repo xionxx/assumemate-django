@@ -52,7 +52,6 @@ class UserAccount(AbstractUser):
         return self.email
     
 class UserProfile(models.Model):
-    user_prof_id = models.BigAutoField(primary_key=True, editable=False)
     user_prof_fname = models.CharField(max_length=50)
     user_prof_lname = models.CharField(max_length=50)
     user_prof_gender = models.CharField(max_length=6)
@@ -61,7 +60,7 @@ class UserProfile(models.Model):
     user_prof_address = models.CharField(max_length=255)
     user_prof_pic = models.URLField(null=True, blank=True)
     user_prof_valid_id = models.URLField(null=True, blank=True)
-    user_id = models.OneToOneField(UserAccount, null=False, on_delete=models.CASCADE, db_column='user_id', related_name='profile')
+    user_id = models.OneToOneField(UserAccount, null=False, primary_key=True, editable=False, on_delete=models.CASCADE, db_column='user_id', related_name='profile')
 
     def __str__(self):
         return f"{self.user_prof_fname} {self.user_prof_lname}"
@@ -85,7 +84,7 @@ class UserVerification(models.Model):
         db_table = 'user_verification'
 
 class UserApplication(models.Model):
-    user_prof_id = models.OneToOneField(UserProfile, null=False, on_delete=models.CASCADE, db_column='user_prof_id', primary_key=True, editable=False)
+    user_id = models.OneToOneField(UserAccount, null=False, on_delete=models.CASCADE, db_column='user_id', related_name='user_application', primary_key=True, editable=False)
     user_app_status = models.CharField(max_length=10, default='PENDING')
     user_app_approved_at = models.DateTimeField(blank=True, null=True)
     user_app_reviewer_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, blank=True, null=True, db_column='user_app_reviewer_id')

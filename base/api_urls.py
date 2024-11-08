@@ -29,7 +29,8 @@ urlpatterns = [
     path('make/offer/', api_views.MakeOfferAPIView.as_view(), name='make-offer'),
     path('update/offer/', api_views.UpdateOfferAPIView.as_view(), name='update-offer'),
     path('assumptor/list/offers/', api_views.AssumptorListOffers.as_view(), name='assumptor-list-offers'),
-    path('assumptor/all/listings/', api_views.AssumpotorListings.as_view(), name='assumptor-lists'),
+    path('assumptor/all/listings/', api_views.AssumptorListings.as_view(), name='assumptor-lists'),
+    path('assumptor/<int:user_id>/all/listings/', api_views.AssumptorViewListings.as_view(), name='assumptor-lists'),
     path('view/user/inbox/', api_views.UserChatRoomAPIView.as_view(), name='inbox'),
     path('add/listings/', api_views.CarListingCreate.as_view(), name='car-listing-create'),
     path('random/listings/', api_views.RandomListingListView.as_view(), name='random-listing'),
@@ -41,6 +42,7 @@ urlpatterns = [
 
     path('listings/<str:category>/', api_views.ListingByCategoryView.as_view(), name='listings_by_category'),
     # path('listings/details/<str:list_id>/', api_views.ListingDetailView.as_view(), name='listing_details'),
+    path('listing/searchview/', api_views.ListingSearchView.as_view(), name='ListingSearchView'),
 
     path('favorites/add/', api_views.AddFavoriteView.as_view(), name='add_favorite'),
     path('favorites/remove/', api_views.RemoveFavoriteView.as_view(), name='remove_favorite'),
