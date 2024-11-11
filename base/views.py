@@ -23,8 +23,9 @@ from django.views.decorators.http import require_POST
 from django.contrib import messages
 from django.db.models import Q, Count
 from .permissions import IsAdminUser
-from .models import ListingApplication, PasswordResetToken, UserApplication, UserProfile, Report, Listing, PromoteListing
+from .models import *
 from rest_framework import viewsets, status, permissions
+import hashlib
 from django.contrib.auth.hashers import check_password
 from django.template.loader import render_to_string
 from rest_framework.response import Response
@@ -744,3 +745,14 @@ def reset_password(request):
 
 def reset_pass_done(request):
     return render(request, 'base/pass_reset_done.html')
+
+def paypal_return_link(request):
+    user_id = request.GET.get('merchantId')
+    user = UserModel.objects.get(id=user_id)
+    merchant_id = request.GET.get('merchantIdInPayPal')
+
+    hashed_merchant_id = hashlib.sha256(merchant_id.encode()).hexdigest()
+
+    Paypal.objects.create(user_id=user, paypal_merchant_id=hashed_merchant_id)
+
+    return render(request, 'base/onboarding_success.html')

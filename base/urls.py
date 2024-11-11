@@ -5,7 +5,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 urlpatterns = [
-    path('', views.base, name='base'),
+    # path('', views.base, name='base'),
     path('register/user/<str:user_type>', views.upperuser_register, name='upperuser_register'),
     path('account/admin/create', views.admin_acc_create, name='admin_acc_create'),
     path('list/admin', views.admin_acc_list, name='admin_acc_list'),
@@ -51,7 +51,10 @@ urlpatterns = [
     path('acceptreport/<int:report_id>/', views.accept_report, name='accept_report'),
     path('rejectreport/<int:report_id>/', views.reject_report, name='reject_report'),
     path('Reviewer/ViewReport/<int:report_id>/', views.report_detail_view, name='report_detail_view'),
-    path('Admin/PlatformReport', views.platform_report, name='platform_report'),
+    path('Admin/PlatformReport/', views.platform_report, name='platform_report'),
+
+    path('user/onboarded/', views.paypal_return_link, name='onboard_success'),
+    # path('', views.paypal_return_link, name='onboard_success'),
 ]
 
 if settings.DEBUG:

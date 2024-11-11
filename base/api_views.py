@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 import locale
 import random
 from django.shortcuts import redirect, render
@@ -34,6 +34,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+clientId = os.getenv('PARTNER_CLIENT_ID')
+secretKey = os.getenv('PARTNER_SECRET_KEY')
+baseURL = os.getenv('PAYPAL_BASE_URL')
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
@@ -408,9 +412,14 @@ class ViewOtherProfile(APIView):
             profile_data['application_status'] = user_status.user_app_status
             print(profile_data['application_status'])
 
+            followers = Follow.objects.filter(following_id=user_id).count()
+            profile_data['followers'] = followers
+            print(followers)
+            
+
             return Response({'user_profile': profile_data}, status=status.HTTP_200_OK)
-        except UserModel.DoesNotExist:
-            return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except UserApplication.DoesNotExist:
+            return Response({'error': 'User application status not found.'}, status=status.HTTP_404_NOT_FOUND)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -754,20 +763,6 @@ class CarListingCreate(generics.CreateAPIView):
         list_instance = self.perform_create(serializer)
 
         ListingApplication.objects.create(list_id=list_instance)
-        
-        # Fetch the user's wallet (modify the wall_id as needed)
-        # wallet = Wallet.objects.get(wall_id=1)  # You may want to get the user's wallet dynamically
-        # required_coins = Decimal('20')  # Coins needed to add a listing
-
-        # if wallet.wall_amnt < required_coins:
-        #     return Response(
-        #         {'detail': 'Insufficient coins, Please top to proceed'},
-        #         status=status.HTTP_400_BAD_REQUEST
-        #     )
-
-        # # Deduct coins from the wallet
-        # wallet.wall_amnt -= required_coins
-        # wallet.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
@@ -802,19 +797,30 @@ class ListingDetailView(APIView):
         # print(serializer.data)
         return Response(serializer.data)
 
-@method_decorator(csrf_exempt, name='dispatch')
 class AddCoinsToWalletView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication] 
-    queryset = Wallet.objects.all()
+    authentication_classes = [JWTAuthentication]
     serializer_class = WalletSerializer
 
+    def get_object(self):
+        user = self.request.user
+        wallet = Wallet.objects.filter(user_id=user.id).first()
+        
+        if not wallet:
+            raise Http404("Wallet not found for the user.")
+        
+        return wallet
+
     def perform_update(self, serializer):
-        # Add coins to the wallet
-        instance = self.get_object()
-        coins_to_add = self.request.data.get('coins_to_add')
-        instance.wall_amnt += Decimal(coins_to_add)
+        instance = self.get_object()  # Get the wallet instance
+        coins_to_add = self.request.data.get('coins_to_add', 0)
+
+        coins_to_add = Decimal(coins_to_add)
+
+        instance.wall_amnt += coins_to_add
         instance.save()
+
+        return Response({'new_balance': instance.wall_amnt}, status=status.HTTP_200_OK)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class GetTotalCoinsView(generics.RetrieveAPIView):
@@ -822,13 +828,114 @@ class GetTotalCoinsView(generics.RetrieveAPIView):
     authentication_classes = [JWTAuthentication] 
     queryset = Wallet.objects.all()
     serializer_class = WalletSerializer
+
     def get_object(self):
         user = self.request.user
-        # Fetch wallet with id 1 (or modify as needed)
         try:
-            return Wallet.objects.get(user_id=user)
+            # Try to retrieve the wallet for the logged-in user
+            wallet = Wallet.objects.get(user_id=user.id)
         except Wallet.DoesNotExist:
-            raise Http404("Wallet not found for this user.")
+            # If wallet doesn't exist, create a new one with default values
+            wallet = Wallet.objects.create(user_id=user.id, wall_amnt=0)
+            wallet.save()
+        
+        return wallet
+
+    def get(self, request, *args, **kwargs):
+        # Get the wallet and serialize the data
+        wallet = self.get_object()
+        serializer = self.get_serializer(wallet)
+        return Response(serializer.data)
+
+class DeductCoinsView(generics.UpdateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    serializer_class = WalletSerializer
+
+    def get_object(self):
+        return Wallet.objects.get(user_id=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        wallet = self.get_object()
+        amount_to_deduct = request.data.get("amount", 0)
+        amount_to_deduct = Decimal(amount_to_deduct)
+
+        # Check if the list_id is provided in the request
+        list_id = request.data.get("list_id")
+        if not list_id:
+            return Response({'error': 'list_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if the listing is already promoted
+        if PromoteListing.objects.filter(list_id=list_id).exists():
+            return Response({'Listing is already promoted.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check for sufficient coins
+        if wallet.wall_amnt < amount_to_deduct:
+            return Response({'error': 'Insufficient coins'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Deduct coins and save wallet
+        wallet.wall_amnt -= amount_to_deduct
+        wallet.save()
+        return Response({'new_balance': wallet.wall_amnt})
+
+class DeleteListingView(generics.UpdateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    serializer_class = CarListingSerializer
+
+    def update(self, request, *args, **kwargs):
+        listing_id = kwargs.get("listing_id")
+        
+        # Check if the listing exists in PromoteListing and delete it if found
+        try:
+            promote_listing = PromoteListing.objects.get(list_id=listing_id)
+            promote_listing.delete()
+        except PromoteListing.DoesNotExist:
+            pass  # No action needed if listing is not promoted
+
+        # Check if the listing exists in the Listing table
+        try:
+            listing = Listing.objects.get(list_id=listing_id)
+            listing.list_status = "archive"  # Set status to 'archive'
+            listing.save()
+            return Response({"message": "Listing deleted successfully"}, status=status.HTTP_200_OK)
+        except Listing.DoesNotExist:
+            raise Exception({"error": "Listing not found"})
+        
+class UpdateListingStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def patch(self, request, listing_id):
+        try:
+            # Fetch the listing by ID
+            listing = Listing.objects.get(list_id=listing_id)
+
+            # Get the amount from the request body
+            amount = request.data.get("amount", 0)
+            amount = Decimal(amount)
+
+            # Update the list_status to 'active'
+            listing.list_status = 'active'
+            listing.save() 
+
+            # Create a transaction for the listing status update
+            transaction = Transaction.objects.create(
+                user_id=request.user,
+                amount=amount,  # Use the amount passed from the request
+                transaction_status='COMPLETED',
+                transaction_date=timezone.now(),
+                category='ADD LISTING'
+            )
+
+            # Return a success response
+            return Response({
+                "message": "Listing status updated successfully.",
+                "transaction_id": transaction.id
+            }, status=200)
+        except Listing.DoesNotExist:
+            # If the listing doesn't exist, return a 404 response
+            raise Exception(detail="Listing not found.")
 
 class ListingByCategoryView(APIView):
     serializer_class = ListingSerializer
@@ -967,7 +1074,7 @@ class AddFavoriteView(APIView):
 
 class RemoveFavoriteView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication] 
+    authentication_classes = [JWTAuthentication]
 
     def delete(self, request):
         user = request.user
@@ -995,37 +1102,6 @@ class UserProfileView(APIView):
         # Serialize the user profile data
         serializer = UserProfileSerializer(user_profile)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class AdminRegistrationAPIView(generics.CreateAPIView):
-    permission_classes = [permissions.AllowAny]
-    # permission_classes = [IsAdminUser]
-    def post(self, request):
-        serializer = AdminRegistrationSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
-            account, profile = serializer.save()
-
-            password = serializer.generate_password()
-
-            # return Response({
-            #     'admin': {
-            #         'email': account.email,
-            #         'first_name': account.first_name,
-            #         'last_name': account.last_name
-            #     },
-            #     'profile': {
-            #         'fname': profile.user_profile_fname,
-            #         'lname': profile.user_prof_lname,
-            #         'gender': profile.user_prof_gender,
-            #         'dob': profile.user_prof_dob,
-            #         'contact': profile.user_prof_mobile,
-            #         'address': profile.user_prof_address
-            #     },
-            #     'password': password
-            # }, status=status.HTTP_201_CREATED)
-            return Response({'message': 'Admin Created Succesfully.'}, status=status.HTTP_201_CREATED)
-        else:
-            return Response({'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 @method_decorator(csrf_exempt, name='dispatch')         
 class ListingSearchView(APIView):
@@ -1064,8 +1140,6 @@ def is_admin(user):
 def email_verified(request):
     return render(request, 'base/email-verified.html')
 
-# def reset_password(request):98
-
 class CheckGoogleEmail(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -1098,3 +1172,371 @@ class CheckGoogleEmail(APIView):
         except ValueError as e:
             print(e)
             return JsonResponse({'error': f'Invalid token: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FollowUser(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    serializer_class = FollowSerializer
+
+    def post(self, request, *args, **kwargs):
+        data = request.data
+        # Extract assumptor_user from the incoming data
+        data['following_id'] = data.get('user_id')  # Ensure you set the correct field name
+        data['follower_id'] = request.user.id  # Get the current user's ID
+
+        # Debugging: Log the data being sent to the serializer
+        print("Incoming data for serializer:", data)
+
+        # Create the serializer instance with the corrected data
+        serializer = self.serializer_class(data=data)
+
+        # Validate and save the serializer data
+        if serializer.is_valid():
+            serializer.save()
+            following = serializer.data
+            print(following)
+            try:
+                id = following['following_id']
+                user = UserModel.objects.get(id=id)
+            except UserModel.DoesNotExist:
+                return Response({'error': 'User does not exist'}, status=status.HTTP_404_NOT_FOUND)
+                
+            try:
+                prof = UserProfile.objects.get(user_id=user)
+            except UserProfile.DoesNotExist:
+                return Response({'error': 'User profile does not exist'}, status=status.HTTP_404_NOT_FOUND)
+
+            # Prepare the follower data for response
+            following_data = {
+                'user_id': prof.user_id.id, 
+                'fullname': prof.user_prof_fname + ' ' + prof.user_prof_lname,
+                'profile': prof.user_prof_pic
+            }
+            print(following_data)
+            return Response(following_data, status=status.HTTP_200_OK)
+        # Log serializer errors for debugging
+        print("Serializer errors:", serializer.errors)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class UnfollowUser(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    queryset = Follow.objects.all()
+
+    def delete(self, request, *args, **kwargs):
+        print("Received DELETE request")  # Debugging line
+        print("User:", request.user)  # Print the authenticated user
+        print("Request data:", request.data)  # Print the request data
+        
+        user_id = request.data.get('user_id')
+        print("User ID to unfollow:", user_id)  # Print the user ID to unfollow
+
+        if user_id is None:
+            print("No user_id provided in the request.")  # Debugging line
+            return Response({"detail": "User ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            following = self.queryset.get(follower_id=request.user, following_id=user_id)
+            following.delete()
+            print(f"Successfully unfollowed user ID {user_id}")  # Debugging line
+            return Response({"detail": "Unfollowed successfully."}, status=status.HTTP_200_OK)
+        except Follow.DoesNotExist:
+            print(f"Following relationship does not exist for user ID {user_id}")  # Debugging line
+            return Response({"detail": "Following relationship does not exist."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print("An error occurred:", str(e))  # Debugging line for any other exceptions
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+class ListFollowing(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, *args, **kwargs):
+        followings = Follow.objects.filter(follower_id=request.user)
+        serializer = FollowSerializer(followings, many=True)
+        print(serializer.data)
+        following = serializer.data
+        following_list = []
+        for follow in following:
+            try:
+                id = follow['following_id']
+                user = UserModel.objects.get(id=id)
+            except UserModel.DoesNotExist:
+                return Response({'error': 'User does not exist'}, status=status.HTTP_404_NOT_FOUND)
+                
+            try:
+                prof = UserProfile.objects.get(user_id=user)
+            except UserProfile.DoesNotExist:
+                return Response({'error': 'User profile does not exist'}, status=status.HTTP_404_NOT_FOUND)
+
+            # Prepare the follower data for response
+            following_data = {
+                'user_id': prof.user_id.id, 
+                'fullname': prof.user_prof_fname + ' ' + prof.user_prof_lname,
+                'profile': prof.user_prof_pic
+            }
+
+            following_list.append(following_data)
+        print(following_list)
+        return Response({'following': following_list}, status=status.HTTP_200_OK)
+
+
+class ListFollower(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        followers = Follow.objects.filter(following_id=request.user)
+        serializer = FollowSerializer(followers, many=True)
+        # print(serializer.data)
+        follower = serializer.data
+        follower_list = []
+        for follow in follower:
+            try:
+                id = follow['follower_id']
+                user = UserModel.objects.get(id=id)
+            except UserModel.DoesNotExist:
+                return Response({'error': 'User does not exist'}, status=status.HTTP_404_NOT_FOUND)
+                
+            try:
+                prof = UserProfile.objects.get(user_id=user)
+            except UserProfile.DoesNotExist:
+                return Response({'error': 'User profile does not exist'}, status=status.HTTP_404_NOT_FOUND)
+
+            follower_data = {
+                'user_id': prof.user_id.id,  
+                'fullname': prof.user_prof_fname + ' ' + prof.user_prof_lname,
+                'profile': prof.user_prof_pic  
+            }
+
+            follower_list.append(follower_data)
+            
+        print(follower_list)
+        return Response({'follower': follower_list}, status=status.HTTP_200_OK)
+    
+
+class TransactionHistoryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    
+    def get(self, request):
+        # Fetch all transactions for the authenticated user
+        user = request.user
+        transactions = Transaction.objects.filter(user_id=user)  # Assuming user_id is the user who made the transaction
+
+        # Serialize the data
+        serializer = TransactionSerializer(transactions, many=True)
+        return Response(serializer.data)
+
+class CreatePaypalOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def post(self, request, *args, **kwargs):
+        url = "https://api.sandbox.paypal.com/v2/checkout/orders"
+        client_id = clientId
+        secret_key = secretKey
+        credentials = f"{client_id}:{secret_key}"
+        auth_header = {
+            "Authorization": f"Basic {base64.b64encode(credentials.encode()).decode()}",
+            "Content-Type": "application/json"
+        }
+
+        amount = request.data.get('amount', '10.00')
+
+        order_data = {
+            "intent": "CAPTURE",
+            "purchase_units": [{
+                "amount": {
+                    "currency_code": "PHP",
+                    "value": str(amount),
+                }
+            }],
+            "application_context": {
+                "return_url": "http://yourapp.com/payment-success",
+                "cancel_url": "http://yourapp.com/payment-cancelled",
+                "user_action": "PAY_NOW",
+                "shipping_preference": "NO_SHIPPING",
+            }
+        }
+
+        try:
+            response = requests.post(url, json=order_data, headers=auth_header)
+            response.raise_for_status()
+            
+            order_data = response.json()
+            return Response({
+                'id': order_data['id'],
+                'approval_url': next(link['href'] for link in order_data['links'] if link['rel'] == 'approve')
+            })
+        except requests.exceptions as e:
+            logger.error(f"PayPal API error: {str(e)}")
+            return Response({'error': 'Unable to create PayPal order'}, status=500)
+        
+class CapturePaypalOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def post(self, request, *args, **kwargs):
+        order_id = request.data.get('orderID')
+        amount = request.data.get('amount')
+
+        if not order_id:
+            return Response({'error': 'Missing orderID'}, status=400)
+
+        client_id = clientId
+        secret_key = secretKey
+        credentials = f"{client_id}:{secret_key}"
+        auth_header = {
+            "Authorization": f"Basic {base64.b64encode(credentials.encode()).decode()}",
+            "Content-Type": "application/json"
+        }
+
+        capture_url = f"https://api.sandbox.paypal.com/v2/checkout/orders/{order_id}/capture"
+
+        try:
+            capture_response = requests.post(capture_url, headers=auth_header)
+            capture_response.raise_for_status()
+            
+            capture_data = capture_response.json()
+            
+            # Extract capture details from the response
+            capture_id = capture_data['purchase_units'][0]['payments']['captures'][0]['id']
+            transaction_status = capture_data['status']  # e.g., 'COMPLETED'
+            capture_amount = capture_data['purchase_units'][0]['payments']['captures'][0]['amount']['value']
+             # Retrieve the UserAccount instance associated with the currently authenticated user
+            user_account = request.user
+
+            # Create a new transaction and link it to the logged-in user
+            transaction = Transaction.objects.create(
+                order_id=order_id,
+                capture_id=capture_id,
+                amount=capture_amount,
+                transaction_status=transaction_status,
+                transaction_date=timezone.now(),  # Set the current timestamp
+                user_id=user_account  # Link the UserAccount instance directly
+            )
+
+            return Response({
+                'status': 'COMPLETED',
+                'order_id': order_id,
+                'capture_id': capture_id,
+                'amount': capture_amount,
+                'transaction_id': transaction.id  # Return the transaction ID for reference
+            })
+        except requests.exceptions.RequestException as e:
+            logger.error(f"PayPal capture error: {str(e)}")
+            return Response({'error': 'Payment capture failed'}, status=500)
+        
+class PaypalPaymentCancelled(APIView):
+        def get(self, request, *args, **kwargs):
+                # You can handle cancellation logic here, such as notifying the user
+                return JsonResponse({'status': 'Payment cancelled'})
+        
+@method_decorator(csrf_exempt, name='dispatch')
+class RefundPayment(APIView):
+    permission_classes = [permissions.AllowAny]
+    def post(self, request, *args, **kwargs):
+        try:
+            # Query the first transaction in the database
+            transaction = Transaction.objects.last()
+
+            if not transaction:
+                return JsonResponse({"error": "No transaction found"}, status=404)
+
+            # Prepare the refund request data
+            capture_id = transaction.capture_id
+
+            if not capture_id:
+                return JsonResponse({"error": "Missing capture_id"}, status=400)
+                
+            # Verify transaction status
+            if transaction.transaction_status != 'COMPLETED':
+                return JsonResponse({
+                    "error": f"Cannot refund transaction with status: {transaction.transaction_status}"
+                }, status=400)
+
+            # Get OAuth token first
+            auth_url = "https://api.sandbox.paypal.com/v1/oauth2/token"
+            client_id = clientId
+            secret_key = secretKey
+            credentials = f"{client_id}:{secret_key}"
+            refund_amount = (transaction.amount * Decimal('0.95')).quantize(Decimal('0.01'), rounding=ROUND_DOWN)
+            # Get access token
+            auth_response = requests.post(
+                auth_url,
+                headers={
+                    "Authorization": f"Basic {base64.b64encode(credentials.encode()).decode()}",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                data={"grant_type": "client_credentials"}
+            )
+            
+            auth_response.raise_for_status()
+            access_token = auth_response.json()['access_token']
+
+            # Correct refund URL
+            url = f"https://api.sandbox.paypal.com/v2/payments/captures/{capture_id}/refund"
+            
+            refund_data = {
+                "amount": {
+                    "currency_code": "PHP",
+                    "value": str(refund_amount)
+                },
+                "note_to_payer": "Refund for transaction"
+            }
+
+            # Make the refund request with OAuth token
+            response = requests.post(
+                url,
+                json=refund_data,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                }
+            )
+            
+            # Log the response for debugging
+            logger.info(f"PayPal Refund Request Details:")
+            logger.info(f"Capture ID: {capture_id}")
+            logger.info(f"Amount: {transaction.amount}")
+            logger.info(f"Response Status: {response.status_code}")
+            logger.info(f"Response Content: {response.text}")
+            
+            response.raise_for_status()
+
+            # Parse the PayPal response
+            refund_response = response.json()
+
+            # Update transaction status
+            transaction.transaction_status = "REFUNDED"
+            transaction.save()
+
+            # Return success response
+            return JsonResponse({
+                "message": "Refund successful",
+                "transaction_id": transaction.id,
+                "order_id": transaction.order_id,
+                "refund_id": refund_response.get('id', 'N/A'),
+                "status": refund_response.get('status'),
+                "amount": str(transaction.amount),
+                "refund_date": timezone.now().isoformat()
+            }, status=200)
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Refund failed: {str(e)}")
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                logger.error(f"PayPal error details: {e.response.text}")
+            return JsonResponse({
+                "error": "Refund request failed",
+                "details": str(e),
+                "transaction_id": transaction.id if transaction else None
+            }, status=500)
+        except Exception as e:
+            logger.error(f"Error processing refund: {str(e)}")
+            return JsonResponse({
+                "error": "Internal server error",
+                "details": str(e)
+            }, status=500)

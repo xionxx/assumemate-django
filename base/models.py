@@ -94,9 +94,9 @@ class UserApplication(models.Model):
 
 class Listing(models.Model):
     list_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    list_content = models.JSONField(null=True, blank=True)  # JSON data for car details
-    list_status = models.CharField(max_length=20, default="active")  # Default status
-    list_duration = models.DateTimeField(null=True, blank=True)  # Duration as date & time
+    list_content = models.JSONField(null=True, blank=True)
+    list_status = models.CharField(max_length=20, default="PENDING")
+    list_duration = models.DateTimeField(null=True, blank=True) 
     user_id = models.ForeignKey(UserAccount, null=True, blank=True, on_delete=models.PROTECT, db_column='user_id', related_name='listing')
 
     def __str__(self):
@@ -253,3 +253,40 @@ class PasswordResetToken(models.Model):
 
     class Meta:
         db_table = 'password_reset_token'
+
+
+class Follow(models.Model):
+    follower_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='following_assumptors', db_column='assumee_user_id', limit_choices_to={'is_assumee': True})
+    following_id = models.ForeignKey(UserAccount,on_delete=models.CASCADE,related_name='followers_assumees',db_column='assumptor_user_id',limit_choices_to={'is_assumptor': True})
+    
+    class Meta:
+        db_table = 'follow'
+        unique_together = ('follower_id', 'following_id')  
+
+    def __str__(self):
+        return f"{self.follower_id.email} follows {self.following_id.email}"
+    
+class Paypal(models.Model):
+    user_id = models.OneToOneField(UserAccount, on_delete=models.CASCADE, null=False, primary_key=True, editable=False, db_column='user_id', related_name='paypal')
+    paypal_merchant_id = models.CharField(max_length=255, unique=True)
+    paypal_linked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table='user_paypal'
+
+class Transaction(models.Model):
+    user_id = models.ForeignKey(UserAccount, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions', db_column='user_id')
+    order_id = models.CharField(max_length=255, null=True, blank=True)
+    capture_id = models.CharField(max_length=255, null=True, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction_status = models.CharField(max_length=50)
+    transaction_date = models.DateTimeField(auto_now_add=True)
+    
+    # New category field
+    category = models.CharField(max_length=50, default='TOPUP')
+    
+    class Meta:
+        db_table = 'transaction'
+    
+    def __str__(self):
+        return f"Transaction {self.order_id or 'N/A'} - {self.transaction_status}"

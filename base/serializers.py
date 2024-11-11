@@ -14,7 +14,7 @@ from django.conf import settings
 from google.auth.transport import requests
 from google.oauth2 import id_token as token_auth
 from rest_framework import serializers
-from .models import Favorite, Listing, Offer, PasswordResetToken, UserProfile, UserVerification, UserApplication, ChatMessage, ChatRoom, Listing, Wallet
+from .models import *
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.core.mail import send_mail
@@ -480,7 +480,29 @@ class FavoriteMarkSerializer(serializers.ModelSerializer):
         model = Favorite
         fields = '__all__'
 
+class FollowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Follow
+        fields = ['follower_id', 'following_id']
 
+class ReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = ['report_details', 'report_reason', 'report_status', 'updated_at']
+    def validate(self, attrs):
+        # Custom validation to ensure 'reported_user_id' is in report_details
+        report_details = attrs.get('report_details', {})
+        if 'reported_user_id' not in report_details:
+            raise serializers.ValidationError("Reported user ID must be included.")
+        return attrs
+    def create(self, validated_data):
+        return super().create(validated_data)
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = ['amount', 'transaction_status', 'transaction_date', 'category']
 
 ###############################
 ###############################
