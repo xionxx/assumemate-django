@@ -10,7 +10,7 @@
         <div class="left-container">
             <div class="card position-relative"> <!-- Add position-relative to the card -->
                 <div class="card-body">
-                <a href="{% url 'users_view_details' user_profile.user_prof_id %}" style="text-decoration: none; color: inherit;">
+                <a href="{% url 'users_view_details' user_profile.user_id.id %}" style="text-decoration: none; color: inherit;">
                     <p class="card-text"><strong>
                         {% if user_profile.user_id.is_assumptor %}
                             Assumptor:
@@ -30,78 +30,124 @@
                     </p>
                 {% endif %}
                 <p class="card-text"><strong>Date and Time:  </strong>{{reviewer.list_app_date}}</p>
-                    
                 
-                <img src="{{ user_profile.user_image }}" class="img-fluid fixed-size-img profile-img" alt="user-profile">
+                <img src="{{ user_profile.user_prof_pic }}" class="img-fluid fixed-size-img profile-img" alt="user-profile" >
                     
-                    <p class="card-text"><strong>Details:({{listing.list_content.category}}) </strong></p>
-                    <ul style="font-size: 12px;">
-                        <li><strong>Title:</strong> {{ listing.list_content.title }}</li>
-                        <li><strong>Address:</strong> {{ listing.list_content.address }}</li>
-                        <li><strong>Description:</strong> {{ listing.list_content.description }}</li>
-                        
-                        {% if listing.list_content.category == "Cars" %}
-                            <li><strong>Transmission:</strong> {{ listing.list_content.transmission }}</li>
-                            <li><strong>Model:</strong> {{ listing.list_content.model }}</li>
-                            <li><strong>Make:</strong> {{ listing.list_content.make }}</li>
-                            <li><strong>Mileage:</strong> {{ listing.list_content.mileage }}</li>
-                            <li><strong>Fuel Type:</strong> {{ listing.list_content.fuelType }}</li>
+                <p class="card-text"><strong>Status:</strong> {{reviewer.list_app_status}}</p>
+                <p class="card-text"><strong>Duration (EJD):</strong> {{listing.list_duration_ejd}}</p>
+                <p class="card-text"><strong>Details:({{listing.list_content.category}}) </strong></p>
 
-                        {% elif listing.list_content.category == "Motorcycles"%}
-                            <li><strong>Model:</strong> {{ listing.list_content.model }}</li>
-                            <li><strong>Make:</strong> {{ listing.list_content.make }}</li>
-                            <li><strong>Mileage:</strong> {{ listing.list_content.mileage }}</li>
-                            <li><strong>Fuel Type:</strong> {{ listing.list_content.fuelType }}</li>
-                        {% endif %}
+                <table style="font-size: 12px; width: 100%; border-collapse: separate;">
+                     {% if listing.list_content.category == "Real Estate" %}
+                        <tr>
+                            <td><strong>Title:</strong></td>
+                            <td>{{ listing.list_content.title }}</td>
+                        </tr>
+                    {% elif listing.list_content.category == "Car" or listing.list_content.category == "Motorcycle" %}
+                        <tr>
+                            <td><strong>Title:</strong></td>
+                            <td>{{ listing.list_content.make }} ({{ listing.list_content.model }} - {{ listing.list_content.transmission }})</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Mileage:</strong></td>
+                            <td>{{ listing.list_content.mileage }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fuel Type:</strong></td>
+                            <td>{{ listing.list_content.fuelType }}</td>
+                        </tr>
+                    {% endif %}
 
-                        <li><strong>Price:</strong> {{ listing.list_content.price }}</li>
-                        <li><strong>Down Payment:</strong> {{ listing.list_content.downPayment }}</li>
-                        <li><strong>Loan Duration:</strong> {{ listing.list_content.loanDuration }}</li>
-                        <li><strong>Monthly Payment:</strong> {{ listing.list_content.monthlyPayment }}</li>
-                        <li><strong>Total Payment:</strong> {{ listing.list_content.totalPaymentMade }}</li>  <!-- Fixed typo here -->
-                        <li><strong>Number of Months Paid:</strong> {{ listing.list_content.numberOfMonthsPaid }}</li>
-                    </ul>
+                    <tr>
+                        <td><strong>Price:</strong></td>
+                        <td><span id="totalPayment" data-price="{{ listing.list_content.totalPaymentMade }}"></span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Down Payment:</strong></td>
+                        <td><span id="downPayment" data-price="{{ listing.list_content.downPayment }}"></span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Monthly Payment:</strong></td>
+                        <td><span id="monthlyPayment" data-price="{{ listing.list_content.monthlyPayment }}"></span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>No. of Months Paid:</strong></td>
+                        <td><span id="monthsPaid" data-months="{{ listing.list_content.numberOfMonthsPaid }}"></span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Loan Duration:</strong></td>
+                        <td><span id="loanDuration" data-months="{{ listing.list_content.loanDuration }}"></span></td>
+                    </tr>
 
+                    {% if listing.list_content.category == "Real Estate" %}
+                        <tr>
+                            <td><strong>Lot Area:</strong></td>
+                            <td>{{ listing.list_content.lotArea }} sq. ft</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Floor Area:</strong></td>
+                            <td>{{ listing.list_content.floorArea }} sq. ft</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Bedrooms:</strong></td>
+                            <td>{{ listing.list_content.bedrooms }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Bathrooms:</strong></td>
+                            <td>{{ listing.list_content.bathrooms }}</td>
+                        </tr>
+                    {% endif %}
 
-                    <p class="card-text"><strong>Status:</strong> {{reviewer.list_app_status}}</p>
-                    <p class="card-text"><strong>Duration (EJD):</strong> {{listing.list_duration_ejd}}</p>
+                    <tr>
+                        <td><strong>Address:</strong></td>
+                        <td class="ellipsis1">{{ listing.list_content.address }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Description:</strong></td>
+                        <td class="ellipsis1">{{ listing.list_content.description }}</td>
+                    </tr>
+                </table>
 
-                    <!-- List to display images -->
                     <div class="container text-center my-3">
-                        <div class="list-wrapper">
-                            <ul class="list">
-                                <li class="item">
-                                    <div class="content">
-                                        <a href="#" class="link-text" data-bs-toggle="modal" data-bs-target="#galleryModal">See Listing Photos</a>
-                                    </div>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
 
-                    <div class="modal fade" id="galleryModal" tabindex="-1" aria-labelledby="galleryModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-lg">
+                    <div class="list-wrapper">
+                        <ul class="list">
+                            <li class="item">
+                                <div class="content">
+                                    <div class="row mt-3">
+                                        {% if listing.list_content.images %}
+                                            {% for image in listing.list_content.images %}
+                                                <div class="col-3 mb-3">
+                                                    <!-- Image with click event to open modal -->
+                                                    <img src="{{ image }}" class="img-fluid rounded" alt="Listing Image" onclick="showImageModal('{{ image }}')" style="width: 150px; height: 150px; object-fit: cover;">
+                                                </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <p>No images available for this listing.</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Modal for Viewing Full Image -->
+                <div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered modal-lg"> <!-- Larger modal -->
                         <div class="modal-content">
                             <div class="modal-header">
-                                <h5 class="modal-title" id="galleryModalLabel">Assumptor's Listing</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
-                            <div class="modal-body">
-                                <div class="row">
-                                    {% if listing.list_content.images %}
-                                        {% for image in listing.list_content.images %}
-                                            <div class="col-4">
-                                                <img src="{{ image }}" class="img-fluid rounded" alt="Listing Image">
-                                            </div>
-                                        {% endfor %}
-                                    {% else %}
-                                        <p>No images available for this listing.</p>
-                                    {% endif %}
-                                </div>
+                            <div class="modal-body text-center" style="max-height: 80vh; overflow-y: auto;">
+                                <img id="modalImage" src="" class="img-fluid rounded" alt="Full Image" style="max-height: 70vh; max-width: 100%; height: auto; width: auto;"> <!-- Ensures full image view -->
                             </div>
                         </div>
                     </div>
                 </div>
+
+
+
                 </div>
             </div>
         </div>
@@ -116,7 +162,11 @@
                                 <img src="{{ listing.list_content.images.0 }}" alt="Listing Image" class="listing-image" style="max-width: 100px; max-height: 100px;">
                                 <div class="listing-details">
                                     <p style="font-size: 12px;">
-                                        {{ listing.list_content.title }} 
+                                    {%if listing.list_content.category == "Real Estate" %}
+                                        {{ listing.list_content.title }}
+                                    {% elif listing.list_content.category == "Car" or listing.list_content.category == "Motorcycle" %}
+                                        {{ listing.list_content.make }} ({{ listing.list_content.model }} - {{ listing.list_content.transmission }})
+                                    {%endif%}
                                         {% if listing.is_promoted %}
                                             <span style="color: gold; font-size: 16px;">★</span>
                                         {% endif %}
@@ -175,8 +225,8 @@
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Adds a subtle shadow */
     }
     .modal-body img {
-        width: 100%; /* Ensures the image takes the full width of the column */
-        height: 200px;
+        width: 150px; /* Set fixed width */
+        height: 150px;
         margin-bottom: 15px; /* Set a fixed height */
         object-fit: cover; /* Ensures the image covers the area without stretching */
     }
@@ -216,9 +266,80 @@
     .card-body {
         padding: 15px; /* Padding for card body */
     }
+    table td {
+        vertical-align: top;
+        text-align: left;
+    }
+    table td:first-child {
+        width: 200px; /* Increased width for the first column */
+        font-weight: bold;
+        white-space: nowrap; /* Prevents text from wrapping to a new line */
+    }
+    .ellipsis1 {
+        display: inline-block;
+        max-width: 50ch; /* Limits the width to 25 characters */
+        overflow-wrap: break-word; /* Allows breaking at character boundaries */
+        vertical-align: bottom;
+    }
+
 
 </style>
 <!-- Bootstrap CSS and JS -->
+<script>
+    // Function to convert months to "years, months" format
+    function formatMonths(months) {
+        const years = Math.floor(months / 12);
+        const remainingMonths = months % 12;
+        let result = '';
+        if (years > 0) {
+            result += `${years} year${years > 1 ? 's' : ''}`;
+        }
+        if (remainingMonths > 0) {
+            if (result) result += ', ';
+            result += `${remainingMonths} month${remainingMonths > 1 ? 's' : ''}`;
+        }
+        return result || '0 months';
+    }
+
+    // Function to format price with currency symbol and commas
+    function formatCurrency(amount) {
+        return `₱${parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+    }
+
+    // This event will be triggered once the DOM is fully loaded
+    document.addEventListener("DOMContentLoaded", function () {
+        // Format months for Number of Months Paid and Loan Duration
+        const monthsPaidElement = document.getElementById("monthsPaid");
+        const loanDurationElement = document.getElementById("loanDuration");
+
+        if (monthsPaidElement) {
+            const monthsPaid = parseInt(monthsPaidElement.getAttribute("data-months"), 10);
+            monthsPaidElement.textContent = formatMonths(monthsPaid);
+        }
+
+        if (loanDurationElement) {
+            const loanDuration = parseInt(loanDurationElement.getAttribute("data-months"), 10);
+            loanDurationElement.textContent = formatMonths(loanDuration);
+        }
+
+        // Format price for Price, Down Payment, Monthly Payment, and Total Payment
+        const priceElements = document.querySelectorAll("[data-price]");
+        priceElements.forEach(element => {
+            const price = parseFloat(element.getAttribute("data-price"));
+            element.textContent = formatCurrency(price);
+        });
+    });
+
+    // Function to display image modal (not related to formatting, so left as-is)
+    function showImageModal(imageUrl) {
+        // Set the image source in the modal
+        document.getElementById('modalImage').src = imageUrl;
+        // Show the modal
+        var imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
+        imageModal.show();
+    }
+</script>
+
 <link href="https://stackpath.bootstrapcdn.com/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>

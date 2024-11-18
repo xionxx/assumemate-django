@@ -37,9 +37,9 @@
     <br><br>
     <div class="col px-2 pt-1">
         <table id="admin_list" class="table table-sm table-bordered" width="100%">
-            <thead>
+            <thead style="text-align:center;">
                 <tr>
-                    <th>Application ID</th>
+                    <th >Application ID</th>
                     <th>Description</th>
                     <th>Price</th>
                     <th>Category</th>
@@ -50,12 +50,12 @@
             <tbody id="listing_table_body">
                 {% for application in pending_listings %}
                 <tr>
-                    <td>{{ application.list_app_id }}</td>
+                    <td style="text-align:center;">{{ application.list_app_id }}</td>
                     <td>{{ application.list_id.list_content.description }}</td> 
                     <td>{{ application.list_id.list_content.price }}</td>  
                     <td>{{ application.list_id.list_content.category }}</td>  
-                    <td>{{ application.list_app_status }}</td> 
-                    <td>
+                    <td style="text-align:center;">{{ application.list_app_status }}</td> 
+                    <td style="text-align:center;">
                         <a class="btn btn-sm btn-info" href="{% url 'listing_detail_view' list_app_id=application.list_app_id %}" >
                             <i class="fa-regular fa-eye"></i>
                             

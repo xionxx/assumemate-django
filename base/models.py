@@ -1,12 +1,17 @@
-from datetime import timedelta
+from datetime import timedelta, timezone
 from django.utils import timezone
 import uuid
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.dispatch import receiver
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from base.utils import send_push_notification
 
 class CustomUserManager(BaseUserManager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True)
+    
     def create_user(self, email, password=None, google_id=None):
         """
         Create and return a regular user with an email and password.
@@ -42,7 +47,7 @@ class UserAccount(AbstractUser):
     is_assumee = models.BooleanField(default=False)
     is_assumptor = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
-
+    fcm_token = models.CharField(max_length=255, blank=True, null=True)
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
@@ -51,6 +56,9 @@ class UserAccount(AbstractUser):
     def __str__(self):
         return self.email
     
+    class Meta:
+        db_table = 'user_account'
+
 class UserProfile(models.Model):
     user_prof_fname = models.CharField(max_length=50)
     user_prof_lname = models.CharField(max_length=50)
@@ -108,38 +116,29 @@ class Listing(models.Model):
 class Report(models.Model):
     report_id = models.AutoField(primary_key=True)
     report_details = models.JSONField(null=True)
-    reviewer = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='reviewed_reports', db_column='user_id')
+    reviewer = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='reviewed_reports', db_column='user_id', null=True)
     updated_at = models.DateTimeField(default=timezone.now)
     report_status =  models.CharField(max_length=20, default='PENDING')  # E.g., Approved, Pending, Declined
     report_reason = models.CharField(max_length=255, null=True)
 
     def check_suspension(self):
-        # Get the reported user ID and the user ID who reported
         reported_user_id = self.report_details.get('reported_user_id')
         reporter_id = self.report_details.get('user_id')
-        
         if not reported_user_id:
             return
-
-        # Count approved reports for the reported user, excluding reports from the same reporter
         approved_reports = Report.objects.filter(
             report_details__reported_user_id=reported_user_id,
             report_status='APPROVED'
         ).exclude(report_details__user_id=reporter_id).count()
 
-        # Set the threshold for suspension
-        if approved_reports >= 3:  # Customize threshold
-            # Check if the user is already suspended
+        if approved_reports >= 3: 
             if not SuspendedUser.objects.filter(user_id=reported_user_id).exists():
-                # Suspend the user if not already suspended
                 suspension = SuspendedUser.objects.create(
-                    user_id_id=reported_user_id,  # FK, so use `_id`
+                    user_id_id=reported_user_id,  
                     sus_start=timezone.now(),
                     sus_end=timezone.now() + timedelta(days=30)  # Customize suspension duration
                 )
                 suspension.save()
-
-
     class Meta:
         db_table = 'report'
 
@@ -158,17 +157,36 @@ class SuspendedUser(models.Model):
         return f"User {self.user_id} is suspended from {self.sus_start} to {self.sus_end}"
 
 class ListingApplication(models.Model):
-    list_app_id = models.AutoField(primary_key=True)  # Auto-incrementing primary key
-    list_app_status = models.CharField(max_length=20, default='PENDING')  # E.g., Approved, Pending, Declined
-    list_app_date = models.DateTimeField(default=timezone.now)  # Date of application
-    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  # Foreign key to Listing
-    list_app_reviewer_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, blank=True, null=True, db_column='user_app_reviewer_id', related_name='listing_reviews')  # Add related_name
+    list_app_id = models.AutoField(primary_key=True) 
+    list_app_status = models.CharField(max_length=20,default ='PENDING') 
+    list_app_date = models.DateTimeField(default=timezone.now)  
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  
+    list_app_reviewer_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, blank=True, null=True, db_column='user_app_reviewer_id', related_name='listing_reviews')  # Add relate
     list_reason = models.CharField(max_length=255, null=True)
+
+    def save(self, *args, **kwargs):
+        status_changed = False
+        if self.pk:  # If instance already exists in the database
+            original = ListingApplication.objects.get(pk=self.pk)
+            if original.list_app_status != self.list_app_status:
+                status_changed = True
+
+        super().save(*args, **kwargs)
+
+        if (status_changed or self._state.adding) and self.list_app_status in ['ACCEPTED', 'REJECTED']:
+            message = f"Your listing application {self.list_app_id} has been {self.list_app_status.lower()}."
+            Notification.objects.create(
+                notif_message=message,
+                recipient=self.list_id.user_id,  # Owner of the listing
+                triggered_by=self.list_app_reviewer_id,  # Reviewer who changed the status
+                notification_type="Listing",
+                list_id=self.list_id  # Link to the listing
+            )
+            print("Notification created successfully!")
 
     class Meta:
         db_table = 'listing_application'
 
-        
 class Wallet(models.Model):    
     user_id = models.OneToOneField(UserAccount, primary_key=True, editable=False, on_delete=models.PROTECT, db_column='user_id')
     wall_amnt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -184,8 +202,9 @@ class PromoteListing(models.Model):
     prom_start = models.DateTimeField()
     prom_end = models.DateTimeField()
     list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, null=False, db_column='list_id')
-
+    
     class Meta:
+
         db_table = 'promote_listing'
 
 class Offer(models.Model):
@@ -202,6 +221,123 @@ class Offer(models.Model):
 
     def __str__(self):
         return f'User {self.user_id.email} offers {self.offer_price} for list item {self.list_id}'
+
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding  
+        old_status = None
+
+        if not is_new:
+
+            old_instance = Offer.objects.filter(pk=self.pk).first()
+            if old_instance:
+                old_status = old_instance.offer_status
+
+        super().save(*args, **kwargs)  
+
+        if is_new:
+
+            self.create_offer()
+        elif old_status and old_status != self.offer_status:
+
+            print(old_status)
+            print('tangina')
+            print(self.offer_status)
+
+            self.update_offer_status(self.offer_status)
+
+    def create_offer(self):
+        try:
+
+            list_owner = self.list_id.user_id
+            offer_message = f"New offer of {self.offer_price} for your listing."
+            print(f"Notification message prepared: {offer_message}")
+            print(f"Recipient: {list_owner.email}")
+
+
+            
+            fcm_token = self.list_id.user_id.fcm_token
+            if fcm_token:
+
+                user_profile = self.user_id.profile  # This will access the related UserProfile object
+
+                offer_message = f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} has made an offer of {self.offer_price} for your listing."
+                route = f"ws/chat/{self.user_id.id}/$"  
+                print(f"Debug: Sending follow push notification with route: {route}")
+
+                data_payload={
+                        "route": route,  
+                        "userId": str(self.user_id.id)  
+                    }
+                
+                send_push_notification(
+                    fcm_token=fcm_token,
+                    title="New Offer",
+                    body=offer_message,
+                    data_payload=data_payload
+                    
+                )
+                print(f"Debug: Push notification payload: {{'fcm_token': '{fcm_token}', 'title': 'New Offer', 'body': '{offer_message}', 'data': {data_payload}}}")
+                
+                print("Debug: Follow push notification sent successfully.")
+            else:
+                print("Debug: No FCM token found for the user.")
+            
+            # Create a notification object
+            notification = Notification.objects.create(
+                notif_message=offer_message,
+                recipient=list_owner,
+                list_id=self.list_id,
+                triggered_by=self.user_id,
+                notification_type='offer',
+            )
+
+            
+            print(f"Notification created successfully: {notification}")
+
+        except Exception as e:
+            print(f"Error creating offer or notification: {e}")
+            raise
+
+
+    def update_offer_status(self, new_status):
+        try:
+            offer_status_message = f"Your offer of {self.offer_price} for the listing has been {new_status.lower()}."
+
+            Notification.objects.create(
+                notif_message=offer_status_message,
+                recipient=self.user_id,
+                list_id=self.list_id,
+                triggered_by=self.list_id.user_id,
+                notification_type='offer_status',
+            )
+
+            fcm_token = self.user_id.fcm_token
+            if fcm_token:
+
+                user_profile = self.list_id.user_id.profile  # This will access the related UserProfile object
+
+                offer_message = f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} has {new_status.lower()} your offer ₱ {self.offer_price} for the listing"
+                route = f"ws/chat/{user_profile.user_id.id}/$"  
+                print(f"Debug: Sending follow push notification with route: {route}")
+
+
+                data_payload={
+                        "route": route,  
+                        "userId": str(user_profile.user_id.id)  
+                    }
+                
+                send_push_notification(
+                    fcm_token=fcm_token,
+                    title="New Offer",
+                    body=offer_message,
+                    data_payload=data_payload
+                    
+                )
+            print(f"Offer status notification sent: {offer_status_message}")
+
+        except Exception as e:
+            print(f"Error updating offer status notification: {e}")
+            raise
 
 class ChatRoom(models.Model):
     chatroom_id = models.BigAutoField(primary_key=True, editable=False,)
@@ -232,15 +368,132 @@ class ChatMessage(models.Model):
     def __str__(self):
         return f'Message from {self.sender_id} to room {self.chatroom_id} at {self.chatmess_created_at}'
 
+class Follow(models.Model):
+    follower_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='following_assumptors', db_column='assumee_user_id', limit_choices_to={'is_assumee': True})
+    following_id = models.ForeignKey(UserAccount,on_delete=models.CASCADE,related_name='followers_assumees',db_column='assumptor_user_id',limit_choices_to={'is_assumptor': True})
+
+    class Meta:
+
+        db_table = 'follow'
+        unique_together = ('follower_id', 'following_id') 
+
+    def __str__(self):
+        return f"{self.follower_id.email} follows {self.following_id.email}"
+
+    def save(self, *args, **kwargs):
+        is_new_instance = self._state.adding
+        was_existing_instance = not is_new_instance
+
+        # Save the Follow instance
+        super().save(*args, **kwargs)
+
+        if is_new_instance:
+
+            user_profile = self.follower_id.profile
+            # Send notification when a user follows another user
+            notification = Notification.objects.create(
+                notif_message=f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} has started following you.",
+                recipient=self.following_id,
+                triggered_by=self.follower_id,
+                notification_type="follow",
+                follow_id=self  # Link to the follow instance
+            )
+            self._send_follow_push_notification()
+
+        elif was_existing_instance:
+            # Handle unfollow scenario: if the record was deleted (unfollowed)
+            # You may need to add logic for deletion detection, e.g. `delete` flag.
+            pass
+
+    def _send_follow_push_notification(self):
+        """Send a push notification when the user is followed."""
+        try:
+            fcm_token = self.following_id.fcm_token  
+            if fcm_token:
+                user_profile = self.follower_id.profile
+                route = f"view/{self.follower_id.id}/profile"
+                print("Debug: Sending follow push notification...")
+                send_push_notification(
+                    fcm_token=fcm_token,
+                    title="New Follower",
+                    body=f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} has started following you.",
+                    data_payload={
+                        "route": route,
+                        "userId": str(self.follower_id.id)
+                    }
+                )
+                print("Debug: Follow push notification sent successfully.")
+            else:
+                print("Debug: No FCM token found for the user.")
+        except Exception as e:
+            print(f"Error: Failed to send follow push notification. {e}")
+
+    def create_or_update_notification(self, delete=False):
+        """Create or update a notification for follows."""
+        try:
+            notification = Notification.objects.get(
+                recipient=self.following_id,
+                notification_type="follow",
+                follow_id=self
+            )
+
+            if delete:
+                # If unfollowing, delete the notification
+                notification.delete()
+                print("Debug: Deleted follow notification because the user unfollowed.")
+                return
+            else:
+                # Update the notification message or handle other changes
+                notification.notif_message = f"{self.follower_id.email} has started following you."
+                notification.save()
+                print("Debug: Updated follow notification.")
+
+        except Notification.DoesNotExist:
+            if not delete:
+                # Create a new notification if it doesn't exist
+                notification = Notification.objects.create(
+                    notif_message=f"{self.follower_id.email} has started following you.",
+                    recipient=self.following_id,
+                    triggered_by=self.follower_id,
+                    notification_type="follow",
+                    follow_id=self
+                )
+                print("Debug: Created new follow notification.")
+
 class Favorite(models.Model):
-    fav_id = models.BigAutoField(primary_key=True, editable=False)  # Primary key
-    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  # Link to Listing
-    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, db_column='user_id')  # Link to UserAccount
-    fav_date = models.DateTimeField(auto_now_add=True)  # Automatically set when a favorite is added
+    fav_id = models.BigAutoField(primary_key=True, editable=False)  
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  
+    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, db_column='user_id')  
+    fav_date = models.DateTimeField(auto_now_add=True)  
+
+    def save(self, *args, **kwargs):
+        is_new_instance = not self.pk
+
+        super(Favorite, self).save(*args, **kwargs)  
+
+        if is_new_instance and self.user_id != self.list_id.user_id:
+            like_log = LikeLog.objects.create(list_id=self.list_id, user_id=self.user_id)
+            like_log.create_or_update_notification(delete=False)
+
+    def delete(self, *args, **kwargs):
+        try:
+
+            like_log = LikeLog.objects.get(
+                list_id=self.list_id, 
+                user_id=self.user_id  
+            )
+            like_log.delete()
+
+            like_log.create_or_update_notification(delete=True)
+
+        except LikeLog.DoesNotExist:
+            pass  
+
+        super(Favorite, self).delete(*args, **kwargs)
 
     class Meta:
         db_table = 'favorite'
-        unique_together = ('list_id', 'user_id')  # Ensure each user can favorite a listing only once
+        unique_together = ('list_id', 'user_id')  
 
     def __str__(self):
         return f'Favorite: {self.user_id.email} favorited {self.list_id.list_content}'
@@ -254,18 +507,154 @@ class PasswordResetToken(models.Model):
     class Meta:
         db_table = 'password_reset_token'
 
+class LikeLog(models.Model):
+    log_id = models.BigAutoField(primary_key=True, editable=False) 
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id') 
+    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, db_column='user_id') 
+    log_date = models.DateTimeField(auto_now_add=True)  
 
-class Follow(models.Model):
-    follower_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='following_assumptors', db_column='assumee_user_id', limit_choices_to={'is_assumee': True})
-    following_id = models.ForeignKey(UserAccount,on_delete=models.CASCADE,related_name='followers_assumees',db_column='assumptor_user_id',limit_choices_to={'is_assumptor': True})
-    
     class Meta:
-        db_table = 'follow'
-        unique_together = ('follower_id', 'following_id')  
+        db_table = 'like_log'
+        unique_together = ('list_id', 'user_id') 
 
     def __str__(self):
-        return f"{self.follower_id.email} follows {self.following_id.email}"
+        return f'LikeLog: {self.user_id.email} liked {self.list_id.list_content["title"]}'
+
+    def create_or_update_notification(self, delete=False):
+        """
+        Create or update a notification when a user likes or unlikes a listing, 
+        and send an updated push notification with the current like count.
+        """
+        # Count total likes for the listing
+        total_likes = LikeLog.objects.filter(list_id=self.list_id).count()
+        user_profile = self.user_id.profile
+        # Create the notification message based on total likes
+        if total_likes == 1:
+            message = f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} liked your listing."
+        elif total_likes > 1:
+            message = f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} and {total_likes - 1} others liked your listing."
+        else:
+            message = ""  # No message needed if no likes remain
+
+        try:
+            # Try to retrieve an existing notification for this listing and user
+            notification = Notification.objects.get(
+                recipient=self.list_id.user_id,
+                list_id=self.list_id,
+                notification_type="Listing"
+            )
+
+            if delete:
+                # If deleting, handle removal of the notification if it is the last like
+                if total_likes == 0:
+                    notification.delete()
+                    send_push = False
+                    print("Debug: Deleted notification, as it was the last like.") 
+                else:
+                    # Update the notification with the new like count
+                    notification.notif_message = message
+                    notification.save()
+                    send_push = False  # Don't send push notification for unlikes
+                    print(f"Debug: Updated notification message to '{message}', but no push notification sent.")  
+
+            else:
+                # Update the notification message for likes
+                notification.notif_message = message
+                notification.save()
+                send_push = True
+                print(f"Debug: Updated notification message to '{message}'.")  
+
+        except Notification.DoesNotExist:
+            # Create a new notification if it doesn't exist and not in delete mode
+            if not delete and total_likes > 0:
+                notification = Notification.objects.create(
+                    notif_message=message,
+                    recipient=self.list_id.user_id,
+                    list_id=self.list_id,
+                    triggered_by=self.user_id,
+                    notification_type="like"
+                )
+                send_push = True
+                print("Debug: Created new notification.") 
+            else:
+                send_push = False
+
+        # Retrieve the FCM token of the listing's user
+        try:
+            fcm_token = self.list_id.user_id.fcm_token
+            print(f"Debug: Retrieved fcm_token = {fcm_token}") 
+        except AttributeError as e:
+            print(f"Error: Failed to retrieve fcm_token. {e}")  
+            fcm_token = None
+
+        # Send push notification only if conditions are met
+        if send_push and fcm_token:
+            print("Debug: Sending push notification...") 
+            route = f"/listings/details/"
+            try:
+                send_push_notification(
+                    fcm_token=fcm_token,
+                    title="New Like on Your Listing",
+                    body=message,
+                    data_payload={
+                        "route": route,
+                        "listingId": str(self.list_id),
+                        "userId": str(self.list_id.user_id.id)
+                    },
+                )
+                print("Debug: Push notification sent successfully.")  
+            except Exception as e:
+                print(f"Error: Failed to send push notification. {e}")
+        else:
+            if not send_push:
+                print("Debug: send_push is False, notification not sent.")  
+            elif not fcm_token:
+                print("Debug: fcm_token is missing, notification not sent.") 
+
+
+class Notification(models.Model):
+    notif_id = models.BigAutoField(primary_key=True, editable=False)  # Primary key
+    notif_message = models.CharField(max_length=255)  # Notification message
+    notif_created_at = models.DateTimeField(auto_now_add=True)  # Creation timestamp
+    notif_is_read = models.BooleanField(default=False)  # Read status
+
+    # Link to User who receives the notification
+    recipient = models.ForeignKey(
+        UserAccount,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        db_column='recipient_id'
+    )
+
+    # Optional link to a Listing, if the notification relates to a specific listing
+    list_id = models.ForeignKey(
+        Listing,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_column='list_id'
+    )
+
+    # ForeignKey to the user who triggered the notification (e.g., Assumee who favorited a listing)
+    triggered_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='triggered_notifications',
+        db_column='triggered_by_id'
+    )
+    notification_type = models.CharField(max_length=50, default="general")  # e.g., "follow" or "general"
+    follow_id = models.ForeignKey('follow', null=True, blank=True, on_delete=models.CASCADE)
     
+    class Meta:
+        db_table = 'notification'
+        ordering = ['-notif_created_at']  # Order notifications by the most recent first
+
+    def __str__(self):
+        return f"Notification for {self.recipient.email}: {self.notif_message}"
+    
+
 class Paypal(models.Model):
     user_id = models.OneToOneField(UserAccount, on_delete=models.CASCADE, null=False, primary_key=True, editable=False, db_column='user_id', related_name='paypal')
     paypal_merchant_id = models.CharField(max_length=255, unique=True)
@@ -274,19 +663,49 @@ class Paypal(models.Model):
     class Meta:
         db_table='user_paypal'
 
+class OrderListing(models.Model):
+    order_id= models.BigAutoField(primary_key=True, editable=False, null=False)
+    order_price = models.DecimalField(max_digits=12, decimal_places=2)
+    order_status = models.CharField(max_length=255, default='PENDING')
+    order_created_at = models.DateTimeField(auto_now_add=True)
+    order_updated_at = models.DateTimeField(auto_now=True)
+    offer_id = models.ForeignKey(Offer, null=True, on_delete=models.SET_NULL, blank=True, db_column='offer_id')
+    list_id = models.ForeignKey(Listing, null=True, on_delete=models.SET_NULL, blank=True, db_column='list_id')
+    user_id = models.ForeignKey(UserAccount, blank=False, null=False, on_delete=models.PROTECT, related_name='order_listing', db_column='user_id' )
+
+    class Meta:
+        db_table = 'order_listing'
+
 class Transaction(models.Model):
+    transaction_id = models.BigAutoField(primary_key=True, editable=False)
     user_id = models.ForeignKey(UserAccount, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions', db_column='user_id')
-    order_id = models.CharField(max_length=255, null=True, blank=True)
-    capture_id = models.CharField(max_length=255, null=True, blank=True)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    transaction_status = models.CharField(max_length=50)
+    transaction_paypal_order_id = models.CharField(max_length=255, null=True, blank=True)
+    transaction_paypal_capture_id = models.CharField(max_length=255, null=True, blank=True)
+    transaction_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # transaction_status = models.CharField(max_length=50, default='COMPLETED')
     transaction_date = models.DateTimeField(auto_now_add=True)
-    
-    # New category field
-    category = models.CharField(max_length=50, default='TOPUP')
+    transaction_type = models.CharField(max_length=50, default='TOPUP')
+    order_id=models.ForeignKey(OrderListing, on_delete=models.SET_NULL, null=True, blank=True, db_column='order_id', related_name='order_listing')
     
     class Meta:
         db_table = 'transaction'
     
     def __str__(self):
-        return f"Transaction {self.order_id or 'N/A'} - {self.transaction_status}"
+        return f"Transaction {self.order_id or 'N/A'} - complete"
+
+class Rating(models.Model):
+    rate_id = models.BigAutoField(primary_key=True, editable=False)
+    from_user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='ratings_given', db_column='from_user_id')
+    to_user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='ratings_received', db_column='to_user_id')
+    rating_value = models.IntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5')])  # Example 1-5 rating scale
+    review_comment = models.TextField(null=True, blank=True)  # Optional comment for the rating
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'rating'
+        unique_together = ['from_user_id', 'to_user_id'] 
+
+    def __str__(self):
+        return f"Rating from {self.from_user_id.email} to {self.to_user_id.email}: {self.rating_value}"
+
+

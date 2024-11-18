@@ -13,7 +13,6 @@
                             <span class="input-group-text bg-transparent border border-0"><i class="fa-solid fa-magnifying-glass"></i></span>
                         </div>
                         <input id="search_input" type="text" oninput="hasText()" class="form-control border-0 shadow-none" aria-label="Small" aria-describedby="inputGroup-sizing-sm" placeholder="Search">
-
                         <div class="input-group-prepend ml-3 align-self-center">
                             <span class="input-group-text bg-transparent m-0 border border-0">
                                 <button id="clear_btn" onclick="clearText()" class="btn btn-sm m-0 border border-0 circle" style="display:none;">
@@ -24,7 +23,7 @@
                     </div>
                 </div>
                 <div class="row mx-3">
-                    <div class="input-group input-group-sm my-3 p-0 border border-dark" style="border-radius: 20px;">
+                    <div class="input-group input-group-sm my-3 p-0 border border-dark" style="border-radius:20px;">
                         <select id="category_list" class="form-select border border-0" style="border-radius:20px;" aria-label="Default select example" onchange="filterAdmins()">
                             <option selected value="all">---All---</option>
                             <option value="Active">Active</option>
@@ -35,9 +34,8 @@
             </div>
             <div class="d-flex mt-1 px-3 justify-content-between">
                 <div class="row mt-2">
-                    <p class="h4"><span class="h5 font-weight-bold text-primary"></span></p>
+                    <p class="h4">Admin List <span class="h5 font-weight-bold text-primary">{{ admin|length }}</span></p>
                 </div>
-                <br><br>
                 <div class="p-2">
                     <a href="/account/admin/create" class="btn btn-lg btn-success" style="background-color: #4A8AF0; border: 2px solid #4A8AF0; color: white; border-radius: 10px; padding: 12px 24px;">
                         <span><i class="fa-solid fa-plus"></i>&nbsp;&nbsp;&nbsp;Add Admin</span>
@@ -51,12 +49,32 @@
                         <tr>
                             <th class="fs-9 text-center" width="20%">ID</th>
                             <th class="fs-9 text-center" width="20%">Fullname</th>
-                            <th class="fs-9 text-center" width="20%">Email</th>
+                            <th class="fs-9 text-center" width="20%">Email Address</th>
                             <th class="fs-9 text-center" width="20%">Action</th>
                         </tr>
                     </thead>
-                    <tbody id="admin_list_body">
-                        <!-- Rows will be dynamically generated here -->
+                    <tbody>
+                        {% for admin in admin %}
+                            <tr>
+                                <td class="marquee" style="text-align: center;">{{ admin.id }}</td>
+                                <td class="marquee">{{ admin.profile.user_prof_fname }} {{ admin.profile.user_prof_lname }}</td>
+                                <td class="marquee">{{ admin.email }}</td>
+                                <td class="marquee" style="text-align: center;">
+                                    <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#AdminModal" data-admin-id="{{ admin.id }}"><i class="fa-regular fa-eye"></i></button>
+                                    {% if admin.is_active %}
+                                        <a class="btn btn-sm btn-danger" href="{% url 'admin_deactivate' admin.id %}">
+                                            <i class="fa-regular fa-trash-can"></i>
+                                        </a>
+                                    {% else %}
+                                        <a class="btn btn-sm" href="{% url 'admin_activate' admin.id %}" style="background-color: green; color: white; border: none;">
+                                            <i class="fas fa-recycle"></i>
+                                        </a>
+                                    {% endif %}
+
+                                </td>
+                                
+                            </tr>
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
@@ -65,17 +83,11 @@
 </div>
 
 <!-- Modal -->
-<div class="container">
-    <div class="modal fade" id="AdminModal" role="dialog">
-        <div class="modal-dialog">
-            <!-- Modal content -->
-            <div class="modal-content p-2">
-                <div class="modal-header">
-                    <h4 class="modal-title">Employee Details</h4>
-                     <!--<button type="button" class="close" data-dismiss="modal"></button>-->
-                </div>
-                <div class="modal-body" id="AdminDetailsBody"></div>
-            </div>
+<div class="modal fade" id="AdminModal" role="dialog">
+    <div class="modal-dialog">
+        <!-- Modal content-->
+        <div class="modal-content p-2">
+            <div class="modal-body" id="adminDetailsBody"></div>
         </div>
     </div>
 </div>
@@ -86,88 +98,20 @@
 <script src='https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js'></script>
 <script src='https://cdn.datatables.net/responsive/2.1.0/js/dataTables.responsive.min.js'></script>
 <script src='https://cdn.datatables.net/1.13.5/js/dataTables.bootstrap5.min.js'></script>
-<script src="{% static 'scripts/admin.js' %}"></script>
-
+<script src="{% static 'scripts/reviewer.js' %}"></script>
 <script>
-    // Function to load and filter admins using AJAX
-    function loadAdmins(status = 'all') {
-        let url = '/api/admins/'; // Base URL for fetching admins
-        
-        if (status !== 'all') {
-            url += `?status=${status}`; // Append status filter to URL if not 'all'
-        }
-
-        fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            console.log(data);  // Check the data returned by the API
-            const adminListBody = document.getElementById('admin_list_body');
-            adminListBody.innerHTML = '';  // Clear any existing rows
-
-            // Loop through each admin and add a row to the table
-            data.forEach(admin => {
-                const actionButtons = admin.acc_is_active ? 
-                    // If admin is active, show eye, pen, and trash buttons
-                    `<button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#AdminModal" data-admin-id="${admin.admin_id}"><i class="fa-regular fa-eye"></i></button>
-                    <a class="btn btn-sm btn-danger" href="#" data-admin-id="${admin.admin_id}"><i class="fa-regular fa-trash-can"></i></a>
-                    <a class="btn btn-sm btn-warning" href="/admin_acc/edit/${admin.admin_id}"><i class="fa-regular fa-pen-to-square"></i></a>` :
-                    
-                    // If admin is inactive, show eye, pen, and recycle buttons
-                    `<button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#AdminModal" data-admin-id="${admin.admin_id}"><i class="fa-regular fa-eye"></i></button>
-                    <a class="btn btn-sm btn-activate" href="" style="background-color: green; color: white; border: none;" data-admin-id="${admin.admin_id}"><i class="fas fa-recycle"></i></a>
-                    <a class="btn btn-sm btn-warning" href="/admin_acc/edit/${admin.admin_id}"><i class="fa-regular fa-pen-to-square"></i></a>`;
-
-                const row = `<tr>
-                    <td class="marquee">${admin.admin_id}</td>
-                    <td class="marquee">${admin.admin_first_name} ${admin.admin_last_name}</td>
-                    <td class="marquee">${admin.admin_email}</td>
-                    <td class="marquee">${actionButtons}</td>
-                </tr>`;
-                adminListBody.insertAdjacentHTML('beforeend', row);
-            });
-
-            // Initialize DataTable after rows are added
-            $('#admin_list').DataTable();
-        })
-        .catch(error => {
-            console.error('Error loading admins:', error);
-        });
-    }
-
-    // Function to filter admins based on dropdown selection
-    function filterAdmins() {
-        const status = document.getElementById('category_list').value;
-        loadAdmins(status);
-    }
-
-    // Load the admins when the page is loaded
-    window.onload = function() {
-        loadAdmins(); // Load all admins initially
-    };
-
-    $(document).ready(function () {
-        // Handle the click event on the eye icon button
-        $('#admin_list').on('click', '.btn-info', function () {
+ $(document).ready(function () {
+    // Function to handle the eye icon button click for admins
+    function attachAdminEyeIconClickEvent() {
+        $('.btn-info').on('click', function () {
             var adminId = $(this).data('admin-id');
-            
             // Perform an AJAX request to get admin details
             $.ajax({
-                url: `/api/admins/${adminId}/`, // Update this URL based on your API endpoint
+                url: '/admin_details/' + adminId, // Corrected variable name
                 type: 'GET',
                 success: function (data) {
-                    // Create HTML content for the modal
-                    var modalContent = `
-                        <p>Admin ID: ${data.admin_id}</p>
-                        <p>Full Name: ${data.admin_first_name} ${data.admin_last_name}</p>
-                        <p>Email Address: ${data.admin_email}</p>
-                        <p>Gender: ${data.admin_gender}</p>
-                        <p>Date of Birth: ${data.admin_dob}</p>
-                        <p>Phone No.: ${data.admin_contact}</p>
-                        <p>Address: ${data.admin_address}</p>
-                    `;
-                    
                     // Update the modal body with the admin details
-                    $('#AdminDetailsBody').html(modalContent);
+                    $('#adminDetailsBody').html(data);
                     // Show the modal
                     $('#AdminModal').modal('show');
                 },
@@ -176,72 +120,68 @@
                 }
             });
         });
-    });
+    }
 
-    $('#admin_list').on('click', '.btn-danger', function (e) {
-        e.preventDefault(); // Prevent the default link behavior
-        
-        var adminId = $(this).data('admin-id');
-        
-        // Confirm the action
-        if (confirm('Are you sure you want to deactivate this admin?')) {
-            // Perform an AJAX request to update the admin status
-            $.ajax({
-                url: `/api/admins/${adminId}/deactivate/`, // Update this URL based on your API endpoint
-                type: 'PATCH', // Assuming you use PATCH for updates
-                success: function (response) {
-                    // Reload the admin list after deactivation
-                    loadAdmins();
-                },
-                error: function (error) {
-                    console.log('Error deactivating admin:', error);
-                }
-            });
-        }
-    });
+    // Initially attach the click event
+    attachAdminEyeIconClickEvent();
 
-    $('#admin_list').on('click', '.btn-activate', function (e) {
-        e.preventDefault(); // Prevent the default link behavior
+    // Handle the category dropdown change event
+    $('#category_list').on('change', function () {
+        var selectedStatus = $(this).val();
         
-        var adminId = $(this).data('admin-id');
-        
-        // Confirm the action
-        if (confirm('Are you sure you want to   activate this admin?')) {
-            // Perform an AJAX request to update the admin status
-            $.ajax({
-                url: `/api/admins/${adminId}/activate/`, // Update this URL based on your API endpoint
-                type: 'PATCH', // Assuming you use PATCH for updates
-                success: function (response) {
-                    // Reload the admin list after deactivation
-                    loadAdmins();
-                },
-                error: function (error) {
-                    console.log('Error activating admin:', error);
-                }
-            });
-        }
+        // Send AJAX request with selected status
+        $.ajax({
+            url: '{% url "admin_acc_list" %}', // Ensure this URL matches the view URL name
+            type: 'GET',
+            data: {
+                status: selectedStatus
+            },
+            success: function (data) {
+                // Update the table with the filtered data
+                $('#admin_list').html($(data).find('#admin_list').html());
+                // Reattach the eye icon click event
+                attachAdminEyeIconClickEvent();
+            },
+            error: function (error) {
+                console.log('Error filtering admins:', error);
+            }
+        });
     });
-    // Function to search admins based on user input
-function searchAdmins() {
-    const searchTerm = document.getElementById('search_input').value.toLowerCase();
-    const rows = document.querySelectorAll('#admin_list_body tr');
-    
-    rows.forEach(row => {
-        const id = row.children[0].textContent.toLowerCase();
-        const fullname = row.children[1].textContent.toLowerCase();
-        const email = row.children[2].textContent.toLowerCase();
+});
 
-        // Check if the search term matches any of the columns
-        if (id.includes(searchTerm) || fullname.includes(searchTerm) || email.includes(searchTerm)) {
-            row.style.display = ''; // Show the row
+
+$(document).ready(function () {
+    // Handle search input
+    $('#search_input').on('input', function () {
+        var searchValue = $(this).val().toLowerCase();
+        $('#admin_list tbody tr').each(function () {
+            var row = $(this);
+            var id = row.find('td').eq(0).text().toLowerCase();
+            var fullname = row.find('td').eq(1).text().toLowerCase();
+            var email = row.find('td').eq(2).text().toLowerCase();
+            
+            if (id.includes(searchValue) || fullname.includes(searchValue) || email.includes(searchValue)) {
+                row.show();
+            } else {
+                row.hide();
+            }
+        });
+        
+        // Toggle clear button visibility
+        if (searchValue) {
+            $('#clear_btn').show();
         } else {
-            row.style.display = 'none'; // Hide the row
+            $('#clear_btn').hide();
         }
     });
-}
 
-// Attach the search function to the input event of the search box
-document.getElementById('search_input').addEventListener('input', searchAdmins);
+    // Handle clear button
+    $('#clear_btn').on('click', function () {
+        $('#search_input').val('');
+        $('#search_input').trigger('input'); // Trigger input event to clear search
+    });
+});
+
 
 
 </script>

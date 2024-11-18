@@ -316,7 +316,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 if offer_status == 'ACCEPTED':
                     listing.list_status = 'RESERVED'
                 elif offer_status == 'CANCELLED':
-                    listing.list_status = 'active'
+                    listing.list_status = 'ACTIVE'
                 
                 listing.save()
             except Listing.DoesNotExist:

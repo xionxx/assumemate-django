@@ -13,7 +13,6 @@
                             <span class="input-group-text bg-transparent border border-0"><i class="fa-solid fa-magnifying-glass"></i></span>
                         </div>
                         <input id="search_input" type="text" oninput="hasText()" class="form-control border-0 shadow-none" aria-label="Small" aria-describedby="inputGroup-sizing-sm" placeholder="Search">
-
                         <div class="input-group-prepend ml-3 align-self-center">
                             <span class="input-group-text bg-transparent m-0 border border-0">
                                 <button id="clear_btn" onclick="clearText()" class="btn btn-sm m-0 border border-0 circle" style="display:none;">
@@ -24,8 +23,8 @@
                     </div>
                 </div>
                 <div class="row mx-3">
-                    <div class="input-group input-group-sm my-3 p-0 border border-dark" style="border-radius: 20px;">
-                        <select id="category_list" class="form-select border border-0" style="border-radius:20px;" aria-label="Default select example" onchange="filterReviewers()">
+                    <div class="input-group input-group-sm my-3 p-0 border border-dark" style="border-radius:20px;">
+                        <select id="category_list" class="form-select border border-0" style="border-radius:20px;" aria-label="Default select example">
                             <option selected value="all">---All---</option>
                             <option value="Active">Active</option>
                             <option value="Inactive">Inactive</option>
@@ -35,28 +34,51 @@
             </div>
             <div class="d-flex mt-1 px-3 justify-content-between">
                 <div class="row mt-2">
-                    <p class="h4"><span class="h5 font-weight-bold text-primary"></span></p>
+                    <p class="h4">Reviewer List <span class="h5 font-weight-bold text-primary">{{ reviewer|length }}</span></p>
                 </div>
-                <br><br>
                 <div class="p-2">
-                    <a href="/account/reviewer/create" class="btn btn-lg btn-success" style="background-color: #4A8AF0; border: 2px solid #4A8AF0; color: white; border-radius: 10px; padding: 12px 24px;">
+                    <a href="{% url 'reviewer_acc_create' %}" class="btn btn-lg btn-success" style="background-color: #4A8AF0; border: 2px solid #4A8AF0; color: white; border-radius: 10px; padding: 12px 24px;">
                         <span><i class="fa-solid fa-plus"></i>&nbsp;&nbsp;&nbsp;Add Reviewer</span>
                     </a>
                 </div>
             </div>
             <br>
             <div class="col px-2 pt-1">
-                <table id="reviewer_list" class="table table-sm table-bordered" width="100%">
+                <table id="user_list" class="table table-sm table-bordered" width="100%">
                     <thead>
                         <tr>
                             <th class="fs-9 text-center" width="20%">ID</th>
                             <th class="fs-9 text-center" width="20%">Fullname</th>
-                            <th class="fs-9 text-center" width="20%">Email</th>
+                            <th class="fs-9 text-center" width="20%">Email Address</th>
                             <th class="fs-9 text-center" width="20%">Action</th>
                         </tr>
                     </thead>
-                    <tbody id="reviewer_list_body">
-                        <!-- Rows will be dynamically generated here -->
+                    <tbody>
+                        {% for reviewer in reviewer %}
+                            <tr>
+                                <td class="marquee">{{ reviewer.id }}</td>
+                                <td class="marquee">{{ reviewer.profile.user_prof_fname }} {{ reviewer.profile.user_prof_lname }}</td>
+                                <td class="marquee">{{ reviewer.email }}</td>
+                                <td class="marquee">
+                                    <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#ReviewerModal" data-reviewer-id="{{ reviewer.id }}">
+                                        <i class="fa-regular fa-eye"></i>
+                                    </button>
+                                    {% if reviewer.is_active %}
+                                        <a class="btn btn-sm btn-danger" href="{% url 'is_deactivate' reviewer.id %}">
+                                            <i class="fa-regular fa-trash-can"></i>
+                                        </a>
+                                        <a class="btn btn-sm btn-warning" href="#">
+                                            <i class="fa-regular fa-pen-to-square"></i>
+                                        </a>
+                                    {% else %}
+                                        <a class="btn btn-sm" href="{% url 'is_activate' reviewer.id %}" style="background-color: green; color: white; border: none;">
+                                            <i class="fas fa-recycle"></i>
+                                        </a>
+                                    {% endif %}
+                                </td>
+
+                            </tr>
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
@@ -65,17 +87,14 @@
 </div>
 
 <!-- Modal -->
-<div class="container">
-    <div class="modal fade" id="ReviewerModal" role="dialog">
-        <div class="modal-dialog">
-            <!-- Modal content -->
-            <div class="modal-content p-2">
-                <div class="modal-header">
-                    <h4 class="modal-title">Reviewer Details</h4>
-                    <!--<button type="button" class="close" data-dismiss="modal"></button>-->
-                </div>
-                <div class="modal-body" id="ReviewerDetailsBody"></div>
+<div class="modal fade" id="ReviewerModal" role="dialog">
+    <div class="modal-dialog">
+        <!-- Modal content-->
+        <div class="modal-content p-2">
+            <div class="modal-header">
+                <h4 class="modal-title">Reviewer Details</h4>
             </div>
+            <div class="modal-body" id="reviewerDetailsBody"></div>
         </div>
     </div>
 </div>
@@ -86,88 +105,20 @@
 <script src='https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js'></script>
 <script src='https://cdn.datatables.net/responsive/2.1.0/js/dataTables.responsive.min.js'></script>
 <script src='https://cdn.datatables.net/1.13.5/js/dataTables.bootstrap5.min.js'></script>
-<script src="{% static 'scripts/admin.js' %}"></script>
-
+<script src="{% static 'scripts/table_list.js' %}"></script>
 <script>
-    // Function to load and filter reviewers using AJAX
-    function loadReviewers(status = 'all') {
-        let url = '/api/reviewer/'; // Base URL for fetching reviewers
-        
-        if (status !== 'all') {
-            url += `?status=${status}`; // Append status filter to URL if not 'all'
-        }
-
-        fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            console.log(data);  // Check the data returned by the API
-            const reviewerListBody = document.getElementById('reviewer_list_body');
-            reviewerListBody.innerHTML = '';  // Clear any existing rows
-
-            // Loop through each reviewer and add a row to the table
-            data.forEach(reviewer => {
-                const actionButtons = reviewer.acc_is_active ? 
-                    // If reviewer is active, show eye, pen, and trash buttons
-                    `<button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#ReviewerModal" data-reviewer-id="${reviewer.rev_id}"><i class="fa-regular fa-eye"></i></button>
-                    <a class="btn btn-sm btn-danger" href="#" data-reviewer-id="${reviewer.rev_id}"><i class="fa-regular fa-trash-can"></i></a>
-                    <a class="btn btn-sm btn-warning" href="/reviewer_acc/edit/${reviewer.rev_id}"><i class="fa-regular fa-pen-to-square"></i></a>` :
-                    
-                    // If reviewer is inactive, show eye, pen, and recycle buttons
-                    `<button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#ReviewerModal" data-reviewer-id="${reviewer.rev_id}"><i class="fa-regular fa-eye"></i></button>
-                    <a class="btn btn-sm btn-activate" href="" style="background-color: green; color: white; border: none;" data-reviewer-id="${reviewer.rev_id}"><i class="fas fa-recycle"></i></a>
-                    <a class="btn btn-sm btn-warning" href="/reviewer_acc/edit/${reviewer.rev_id}"><i class="fa-regular fa-pen-to-square"></i></a>`;
-
-                const row = `<tr>
-                    <td class="marquee">${reviewer.rev_id}</td>
-                    <td class="marquee">${reviewer.rev_first_name} ${reviewer.rev_last_name}</td>
-                    <td class="marquee">${reviewer.rev_email}</td>
-                    <td class="marquee">${actionButtons}</td>
-                </tr>`;
-                reviewerListBody.insertAdjacentHTML('beforeend', row);
-            });
-
-            // Initialize DataTable after rows are added
-            $('#reviewer_list').DataTable();
-        })
-        .catch(error => {
-            console.error('Error loading reviewers:', error);
-        });
-    }
-
-    // Function to filter reviewers based on dropdown selection
-    function filterReviewers() {
-        const status = document.getElementById('category_list').value;
-        loadReviewers(status);
-    }
-
-    // Load the reviewers when the page is loaded
-    window.onload = function() {
-        loadReviewers(); // Load all reviewers initially
-    };
-
-    $(document).ready(function () {
-        // Handle the click event on the eye icon button
-        $('#reviewer_list').on('click', '.btn-info', function () {
-            var reviewerId = $(this).data('reviewer-id');
-            
+$(document).ready(function () {
+    // Function to handle the eye icon button click
+    function attachEyeIconClickEvent() {
+        $('.btn-info').on('click', function () {
+            var revId = $(this).data('reviewer-id');
             // Perform an AJAX request to get reviewer details
             $.ajax({
-                url: `/api/reviewer/${reviewerId}/`, // Update this URL based on your API endpoint
+                url: '/reviewer_details/' + revId, // Corrected variable name
                 type: 'GET',
                 success: function (data) {
-                    // Create HTML content for the modal
-                    var modalContent = `
-                        <p>Reviewer ID: ${data.rev_id}</p>
-                        <p>Full Name: ${data.rev_first_name} ${data.rev_last_name}</p>
-                        <p>Email Address: ${data.rev_email}</p>
-                        <p>Gender: ${data.rev_gender}</p>
-                        <p>Date of Birth: ${data.rev_dob}</p>
-                        <p>Phone No.: ${data.rev_contact}</p>
-                        <p>Address: ${data.rev_address}</p>
-                    `;
-                    
                     // Update the modal body with the reviewer details
-                    $('#ReviewerDetailsBody').html(modalContent);
+                    $('#reviewerDetailsBody').html(data);
                     // Show the modal
                     $('#ReviewerModal').modal('show');
                 },
@@ -176,75 +127,69 @@
                 }
             });
         });
+    }
 
-        // Handle the click event on the delete button
-        $('#reviewer_list').on('click', '.btn-danger', function (e) {
-            e.preventDefault(); // Prevent the default link behavior
-            
-            var reviewerId = $(this).data('reviewer-id');
-            
-            // Confirm the action
-            if (confirm('Are you sure you want to deactivate this reviewer?')) {
-                // Perform an AJAX request to update the reviewer status
-                $.ajax({
-                    url: `/api/reviewer/${reviewerId}/deactivate/`, // Update this URL based on your API endpoint
-                    type: 'PATCH', // Assuming you use PATCH for updates
-                    success: function () {
-                        alert('Reviewer deactivated successfully.');
-                        loadReviewers(); // Reload the list after deactivation
-                    },
-                    error: function (error) {
-                        console.log('Error deactivating reviewer:', error);
-                    }
-                });
-            }
-        });
+    // Initially attach the click event
+    attachEyeIconClickEvent();
 
-        // Handle the click event on the activate button
-        $('#reviewer_list').on('click', '.btn-activate', function (e) {
-            e.preventDefault(); // Prevent the default link behavior
-            
-            var reviewerId = $(this).data('reviewer-id');
-            
-            // Confirm the action
-            if (confirm('Are you sure you want to activate this reviewer?')) {
-                // Perform an AJAX request to update the reviewer status
-                $.ajax({
-                    url: `/api/reviewer/${reviewerId}/activate/`, // Update this URL based on your API endpoint
-                    type: 'PATCH', // Assuming you use PATCH for updates
-                    success: function () {
-                        alert('Reviewer activated successfully.');
-                        loadReviewers(); // Reload the list after activation
-                    },
-                    error: function (error) {
-                        console.log('Error activating reviewer:', error);
-                    }
-                });
+    // Handle the category dropdown change event
+    $('#category_list').on('change', function () {
+        var selectedStatus = $(this).val();
+        
+        // Send AJAX request with selected status
+        $.ajax({
+            url: '{% url "reviewer_acc_list" %}', // Ensure this URL matches the view URL name
+            type: 'GET',
+            data: {
+                status: selectedStatus
+            },
+            success: function (data) {
+                // Update the table with the filtered data
+                $('#user_list').html($(data).find('#user_list').html());
+                // Reattach the eye icon click event
+                attachEyeIconClickEvent();
+            },
+            error: function (error) {
+                console.log('Error filtering reviewer:', error);
             }
         });
     });
+});
 
-function searchAdmins() {
-    const searchTerm = document.getElementById('search_input').value.toLowerCase();
-    const rows = document.querySelectorAll('#reviewer_list_body tr');
-    
-    rows.forEach(row => {
-        const id = row.children[0].textContent.toLowerCase();
-        const fullname = row.children[1].textContent.toLowerCase();
-        const email = row.children[2].textContent.toLowerCase();
 
-        // Check if the search term matches any of the columns
-        if (id.includes(searchTerm) || fullname.includes(searchTerm) || email.includes(searchTerm)) {
-            row.style.display = ''; // Show the row
+$(document).ready(function () {
+    // Handle search input
+    $('#search_input').on('input', function () {
+        var searchValue = $(this).val().toLowerCase();
+        $('#user_list tbody tr').each(function () {
+            var row = $(this);
+            var id = row.find('td').eq(0).text().toLowerCase();
+            var fullname = row.find('td').eq(1).text().toLowerCase();
+            var email = row.find('td').eq(2).text().toLowerCase();
+            
+            if (id.includes(searchValue) || fullname.includes(searchValue) || email.includes(searchValue)) {
+                row.show();
+            } else {
+                row.hide();
+            }
+        });
+        
+        // Toggle clear button visibility
+        if (searchValue) {
+            $('#clear_btn').show();
         } else {
-            row.style.display = 'none'; // Hide the row
+            $('#clear_btn').hide();
         }
     });
-}
 
-// Attach the search function to the input event of the search box
-document.getElementById('search_input').addEventListener('input', searchAdmins);
+    // Handle clear button
+    $('#clear_btn').on('click', function () {
+        $('#search_input').val('');
+        $('#search_input').trigger('input'); // Trigger input event to clear search
+    });
+});
 
 </script>
 
-{% endblock %}
+
+{% endblock content %}

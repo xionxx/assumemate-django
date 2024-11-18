@@ -1,5 +1,5 @@
 {% extends "base/base.html" %}
-{% load static %} 
+{% load static %}
 
 {% block content %}
 <link rel="stylesheet" href="{% static 'css/users.css' %}">
@@ -26,45 +26,56 @@
         <div class="row mx-3">
             <div class="input-group input-group-sm my-3 p-0 border border-dark" style="border-radius: 20px;">
                 <select id="category_list" class="form-select border border-0" style="border-radius:20px;" aria-label="Default select example">
-                    <option selected value="all">---All---</option>
-                    <option selected value="Assumptors">Approved</option>
-                    <option selected value="Assumees">Rejected</option>
+                    <option value="all">---All---</option>
+                    <option value="Assumptors">Assumptors</option>
+                    <option value="Assumees">Assumees</option>
                 </select>
             </div>
         </div>
     </div>
-    <div>
     <br><br>
     <div class="col px-2 pt-1">
-                <table id="admin_list" class="table table-sm table bordered" width="100%">
-                    <thead>
-                        <tr>
-                            <th class="fs-9 text-center" width="20%">User ID</th>
-                            <th class="fs-9 text-center" width="20%">Full Name</th>
-                            <th class="fs-9 text-center" width="20%">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="marquee">1001</td>
-                            <td class="marquee">Jericho Cenita</td>
-                            <td class="marquee">
-                                <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target=""><i class="fa-regular fa-eye"></i></button>
-                                <a class="btn btn-sm" href="" style="background-color: green; color: white; border: none;"><i class="fas fa-check"></i></a>                                
-                                <a class="btn btn-sm btn-danger" heref=""><i class="fa-solid fa-circle-xmark"></i></a>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="marquee">1002</td>
-                            <td class="marquee">Sean Llanos</td>
-                            <td class="marquee">
-                                <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target=""><i class="fa-regular fa-eye"></i></button>
-                                <a class="btn btn-sm" href="" style="background-color: green; color: white; border: none;"><i class="fas fa-check"></i></a>                                
-                                <a class="btn btn-sm btn-danger" heref=""><i class="fa-solid fa-circle-xmark"></i></a>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+        <table id="admin_list" class="table table-sm table-bordered" width="100%">
+            <thead style="text-align:center;">
+                <tr>
+                    <th>First Name</th>
+                    <th>Last Name</th>
+                    <th>Email</th>
+                    <th>Application Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="user_table_body" data-category="users">
+                {% for assumptor in pending_assumptors %}
+                <tr data-category="Assumptors">
+                 <!-- Debug: Output the entire object -->
+                    <td class="marquee">{{ assumptor.user_id.profile.user_prof_fname }}</td>
+                    <td class="marquee">{{ assumptor.user_id.profile.user_prof_lname }}</td>
+                    <td class="marquee">{{ assumptor.user_id.profile.user_id.email }}</td>
+                    <td style="text-align: center;">{{ assumptor.user_app_status }}</td>
+                    <td style="text-align: center;">
+                        <a type="button" class="btn btn-sm btn-info" href="{% url 'user_detail_view' assumptor.user_id.pk %}">
+                            <i class="fa-regular fa-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+
+                {% for assumee in pending_assumees %}
+                    <tr data-category="Assumees">
+                        <td class="marquee">{{ assumee.user_id.userprofile.user_prof_fname }}</td>
+                        <td class="marquee">{{ assumee.user_id.userprofile.user_prof_lname }}</td>
+                        <td class="marquee">{{ assumee.user_id.userprofile.user_id.email }}</td>
+                        <td style="text-align: center;">{{ assumee.user_app_status }}</td>
+                        <td style="text-align: center;">
+                            <a type="button" class="btn btn-sm btn-info" href="{% url 'user_detail_view' assumee.user_id.pk %}">
+                                <i class="fa-regular fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -74,5 +85,9 @@
 <script src='https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js'></script>
 <script src='https://cdn.datatables.net/responsive/2.1.0/js/dataTables.responsive.min.js'></script>
 <script src='https://cdn.datatables.net/1.13.5/js/dataTables.bootstrap5.min.js'></script>
-<script src="{% static 'scripts/invv.js' %}"></script>
+<script src="{% static 'scripts/pending_users.js' %}"></script>
+
+
+
+
 {% endblock content %}

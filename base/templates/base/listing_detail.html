@@ -1,0 +1,283 @@
+{% extends "base/base.html" %}
+{% load static %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/report_detail.css' %}">
+
+<div class="container mt-4">
+    <h2>Listing Details</h2>
+    
+    <div class="container-flex">
+        <div class="left-container">
+            <div class="card position-relative">
+                <div class="card-body">    
+                    <p class="card-text"><strong>Listing ID: </strong>{{listing.list_id}}</p>     
+                    <p class="card-text"><strong>Status:</strong> {{ listing.list_status }}</p>
+                    <p class="card-text"><strong>Details:({{listing.list_content.category}}) </strong></p>
+
+                    <table style="font-size: 12px; width: 100%; border-collapse: separate;">
+                        {% if listing.list_content.category == "Real Estate" %}
+                            <tr>
+                                <td><strong>Title:</strong></td>
+                                <td>{{ listing.list_content.title }}</td>
+                            </tr>
+                        {% elif listing.list_content.category == "Car" or listing.list_content.category == "Motorcycle" %}
+                            <tr>
+                                <td><strong>Title:</strong></td>
+                                <td>{{ listing.list_content.make }} ({{ listing.list_content.model }} - {{ listing.list_content.transmission }})</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Mileage:</strong></td>
+                                <td>{{ listing.list_content.mileage }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Fuel Type:</strong></td>
+                                <td>{{ listing.list_content.fuelType }}</td>
+                            </tr>
+                        {% endif %}
+
+                        <tr>
+                            <td><strong>Price:</strong></td>
+                            <td><span id="totalPayment" data-price="{{ listing.list_content.totalPaymentMade }}"></span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Down Payment:</strong></td>
+                            <td><span id="downPayment" data-price="{{ listing.list_content.downPayment }}"></span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Monthly Payment:</strong></td>
+                            <td><span id="monthlyPayment" data-price="{{ listing.list_content.monthlyPayment }}"></span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>No. of Months Paid:</strong></td>
+                            <td><span id="monthsPaid" data-months="{{ listing.list_content.numberOfMonthsPaid }}"></span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Loan Duration:</strong></td>
+                            <td><span id="loanDuration" data-months="{{ listing.list_content.loanDuration }}"></span></td>
+                        </tr>
+
+                        {% if listing.list_content.category == "Real Estate" %}
+                            <tr>
+                                <td><strong>Lot Area:</strong></td>
+                                <td>{{ listing.list_content.lotArea }} sq. ft</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Floor Area:</strong></td>
+                                <td>{{ listing.list_content.floorArea }} sq. ft</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Bedrooms:</strong></td>
+                                <td>{{ listing.list_content.bedrooms }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Bathrooms:</strong></td>
+                                <td>{{ listing.list_content.bathrooms }}</td>
+                            </tr>
+                        {% endif %}
+
+                        <tr>
+                            <td><strong>Address:</strong></td>
+                            <td class="ellipsis1">{{ listing.list_content.address }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Description:</strong></td>
+                            <td class="ellipsis1">{{ listing.list_content.description }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>File:</strong></td>
+                            <td>
+                                {% for document in listing.list_content.documents %}
+                                    {% with document|slice:"-15:" as doc_name %}
+                                        <li>
+                                            <a href="{{ document }}" download>
+                                                Download Document {{ forloop.counter }}: {{ doc_name }}
+                                            </a>
+                                        </li>
+                                    {% endwith %}
+                                {% endfor %}
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div class="container text-center my-3">
+                        <div class="list-wrapper">
+                            <ul class="list">
+                                <li class="item">
+                                    <div class="content">
+                                        <div class="row mt-3">
+                                            {% if listing.list_content.images %}
+                                                {% for image in listing.list_content.images %}
+                                                    <div class="col-3 mb-3">
+                                                        <img src="{{ image }}" class="img-fluid rounded" alt="Listing Image" onclick="showImageModal('{{ image }}')" style="width: 150px; height: 150px; object-fit: cover;">
+                                                    </div>
+                                                {% endfor %}
+                                            {% else %}
+                                                <p>No images available for this listing.</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Modal for Viewing Full Image -->
+                    <div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body text-center" style="max-height: 80vh; overflow-y: auto;">
+                                    <img id="modalImage" src="" class="img-fluid rounded" alt="Full Image" style="max-height: 70vh; max-width: 100%; height: auto; width: auto;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="mt-3 text-center" style="display: flex; justify-content: center; gap: 10px;">
+        <form method="POST" action="{% url 'accept_listing' listing_application.list_app_id %}">
+            {% csrf_token %}
+            <button class="btn btn-success btn-sm" type="submit">
+                <i class="fas fa-check"></i> Accept
+            </button>
+        </form>
+        
+        <form id="rejectForm" method="POST" action="{% url 'reject_listing' listing_application.list_app_id %}">
+            {% csrf_token %}
+            <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#rejectModal">
+                <i class="fa-solid fa-circle-xmark"></i> Reject
+            </button>
+
+            <!-- Reject Reason Modal -->
+            <div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="rejectModalLabel">Reason for Rejection</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <textarea id="rejectionReason" class="form-control" rows="4" placeholder="Enter reason for rejection..." required></textarea>
+                            <input type="hidden" name="list_reason" id="hiddenUserReason">
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-danger" id="confirmReject">Reject</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <form method="" action="{% url 'pending_accounts_view' %}" class="d-inline mx-2">
+            <button class="btn btn-secondary btn-sm" type="submit">
+                <i class="fa-solid fa-arrow-left"></i> Back
+            </button>
+        </form>
+    </div>
+</div>
+
+<style>
+    .container-flex {
+        display: flex;
+        justify-content: space-between;
+    }
+    .left-container {
+        flex: 3;
+        margin-right: 20px;
+        position: relative;
+    }
+    .card {
+        border: 1px solid #f1f1f1;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        background-color: #fff;
+    }
+
+    .card-title {
+        font-size: 1.25rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+    }
+
+    .card-text {
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .ellipsis1 {
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+</style>
+
+<script>
+    // Function to convert months to "years, months" format
+    function formatMonths(months) {
+        const years = Math.floor(months / 12);
+        const remainingMonths = months % 12;
+        let result = '';
+        if (years > 0) {
+            result += `${years} year${years > 1 ? 's' : ''}`;
+        }
+        if (remainingMonths > 0) {
+            if (result) result += ', ';
+            result += `${remainingMonths} month${remainingMonths > 1 ? 's' : ''}`;
+        }
+        return result || '0 months';
+    }
+
+    // Function to format price with currency symbol and commas
+    function formatCurrency(amount) {
+        return `₱${parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+    }
+
+    // This event will be triggered once the DOM is fully loaded
+    document.addEventListener("DOMContentLoaded", function () {
+        // Format months for Number of Months Paid and Loan Duration
+        const monthsPaidElement = document.getElementById("monthsPaid");
+        const loanDurationElement = document.getElementById("loanDuration");
+
+        if (monthsPaidElement) {
+            const monthsPaid = parseInt(monthsPaidElement.getAttribute("data-months"), 10);
+            monthsPaidElement.textContent = formatMonths(monthsPaid);
+        }
+
+        if (loanDurationElement) {
+            const loanDuration = parseInt(loanDurationElement.getAttribute("data-months"), 10);
+            loanDurationElement.textContent = formatMonths(loanDuration);
+        }
+
+        // Format price for Price, Down Payment, Monthly Payment, and Total Payment
+        const priceElements = document.querySelectorAll("[data-price]");
+        priceElements.forEach(element => {
+            const price = parseFloat(element.getAttribute("data-price"));
+            element.textContent = formatCurrency(price);
+        });
+    });
+
+    document.getElementById('confirmReject').addEventListener('click', function() {
+        const reason = document.getElementById('rejectionReason').value;
+        document.getElementById('hiddenUserReason').value = reason; // Set the hidden input value
+        document.getElementById('rejectForm').submit(); // Submit the form
+    });
+
+    // Function to display image modal (not related to formatting, so left as-is)
+    function showImageModal(imageUrl) {
+        // Set the image source in the modal
+        document.getElementById('modalImage').src = imageUrl;
+        // Show the modal
+        var imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
+        imageModal.show();
+    }
+</script>
+{% endblock content%}

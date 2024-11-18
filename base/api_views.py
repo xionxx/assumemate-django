@@ -1,14 +1,18 @@
 from decimal import ROUND_DOWN, Decimal
+import json
 import locale
 import random
+from django.forms import ValidationError
 from django.shortcuts import redirect, render
 from django.urls import reverse
-import requests, base64, cloudinary
+import requests as req
+import base64
+import cloudinary
 from smtplib import SMTPConnectError, SMTPException
 # from django.contrib.auth.decorators import user_passes_test
 from django.utils import timezone
 from django.http import Http404, HttpResponseRedirect, JsonResponse
-from django.db.models import F, Max, OuterRef, Subquery, Q, Case, When, Count
+from django.db.models import F, Max, OuterRef, Subquery, Q, Case, When, Count, Avg
 # from .permissions import IsAdminUser
 from .models import UserProfile, UserVerification, ChatRoom, ChatMessage, Wallet, ListingApplication
 from .serializers import *
@@ -35,8 +39,8 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-clientId = os.getenv('PARTNER_CLIENT_ID')
-secretKey = os.getenv('PARTNER_SECRET_KEY')
+clientId = os.getenv('PAYPAL_CLIENT_ID')
+secretKey = os.getenv('PAYPAL_CLIENT_SECRET')
 baseURL = os.getenv('PAYPAL_BASE_URL')
 
 class MyTokenObtainPairView(TokenObtainPairView):
@@ -415,9 +419,20 @@ class ViewOtherProfile(APIView):
             followers = Follow.objects.filter(following_id=user_id).count()
             profile_data['followers'] = followers
             print(followers)
+
+            # Fetch all ratings for this user
+            ratings = Rating.objects.filter(to_user_id=user_id)
+            # Calculate the average rating
+            if ratings.exists():
+                average_rating = ratings.aggregate(Avg('rating_value'))['rating_value__avg']
+            else:
+                average_rating = None  # No ratings available
+
+            print(average_rating)
+
             
 
-            return Response({'user_profile': profile_data}, status=status.HTTP_200_OK)
+            return Response({'user_profile': profile_data, 'average_rating': average_rating}, status=status.HTTP_200_OK)
         except UserApplication.DoesNotExist:
             return Response({'error': 'User application status not found.'}, status=status.HTTP_404_NOT_FOUND)
         except UserProfile.DoesNotExist:
@@ -608,6 +623,12 @@ class GetActiveOfferAPIView(APIView):
             if lastest_active_offer:
                 offer = OfferSerializer(lastest_active_offer).data
                 listing = CarListingSerializer(lastest_active_offer.list_id).data
+
+                if offer['offer_status'] == 'ACCEPTED':
+                    order_id = OrderListing.objects.get(order_status='PENDING', list_id=listing['list_id'])
+
+                    offer['order_id'] = order_id.order_id
+
                 lister = lastest_active_offer.list_id.user_id.profile
                 lister_prof = UserProfileSerializer(lister).data
 
@@ -632,7 +653,6 @@ class AssumptorListOffers(APIView):
             assumptor = request.user
 
             offers = Offer.objects.filter(Q(list_id__user_id=assumptor) and Q(offer_status='PENDING'))
-
 
             serialized_offers = OfferSerializer(offers, many=True).data
 
@@ -661,6 +681,67 @@ class AssumptorListOffers(APIView):
         except Exception as e:
             return Response({'error': f'Unexpected error occured: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class CreateOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def post(self, request):
+        try:
+            user = request.user
+            offer_id = request.data.get('offer_id')
+            offer = Offer.objects.get(offer_id=offer_id)
+            amount = offer.offer_price
+            list_id = offer.list_id
+
+            if OrderListing.objects.filter(list_id=list_id, order_status='PENDING'):
+                return Response({'error': 'There is an existing order for this listing'}, status=status.HTTP_400_BAD_REQUEST)
+
+            OrderListing.objects.create(order_price=amount, offer_id=offer, list_id=list_id, user_id=offer.user_id)
+
+            return Response({'message': 'Order created'}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            print(e)
+            return Response({'error': f'Error creating order: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class CancelOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, order_id):
+        try:
+            order = OrderListing.objects.get(order_id=order_id)
+            order.order_status = 'CANCELLED'
+            order.save()
+
+            return Response({'message': 'Order cancelled'}, status=status.HTTP_200_OK)
+        except OrderListing.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class GetOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, order_id):
+        user = request.user
+        print(user)
+        try:
+            order = OrderListing.objects.get(order_id=order_id, user_id=user)
+            order_serializer = OrderListingSerializer(order).data
+
+            print(order)
+            list_id = str(order.list_id)
+            listing = Listing.objects.get(list_id=list_id)
+            list_serializer = ListingSerializer(listing).data
+            print(listing)
+            listing_owner = UserProfile.objects.get(user_id=listing.user_id)
+            prof_serializer = UserProfileSerializer(listing_owner).data
+
+            print(listing_owner)
+
+            return Response({'order': order_serializer, 'list': list_serializer, 'lister': prof_serializer}, status=status.HTTP_200_OK)
+        except OrderListing.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
 
 class GetListingOfferAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -681,8 +762,19 @@ class GetListingOfferAPIView(APIView):
             if lastest_active_offer:
                 offer = OfferSerializer(lastest_active_offer).data
                 listing = CarListingSerializer(lastest_active_offer.list_id).data
+                
+                if offer['offer_status'] == 'ACCEPTED':
+                    order_id = OrderListing.objects.get(order_status='PENDING', list_id=listing['list_id'])
+
+                    offer['order_id'] = order_id.order_id
+
                 lister = lastest_active_offer.list_id.user_id.profile
                 lister_prof = UserProfileSerializer(lister).data
+
+                print(offer)
+                print(lister_prof)
+                print(listing)
+
 
                 return Response({'offer': offer, 'listing': listing, 'lister_profile': lister_prof}, status=status.HTTP_200_OK)
             else:
@@ -786,17 +878,6 @@ class CarListingByCategoryView(APIView):
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data)
 
-@method_decorator(csrf_exempt, name='dispatch')   
-class ListingDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication] 
-
-    def get(self, request, list_id, *args, **kwargs):
-        listing = get_object_or_404(Listing, list_id=list_id)
-        serializer = CarListingSerializer(listing)
-        # print(serializer.data)
-        return Response(serializer.data)
-
 class AddCoinsToWalletView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
@@ -846,7 +927,52 @@ class GetTotalCoinsView(generics.RetrieveAPIView):
         wallet = self.get_object()
         serializer = self.get_serializer(wallet)
         return Response(serializer.data)
+class ListingStatus(APIView):
+    """
+    API view to retrieve the status of a listing.
+    """
+    def get(self, request, listing_id):
+        try:
+            listing = Listing.objects.get(pk=listing_id)
+            return Response({'list_status': listing.list_status}, status=status.HTTP_200_OK)
+        except Listing.DoesNotExist:
+            return Response({'error': 'Listing not found'}, status=status.HTTP_404_NOT_FOUND)
+class PromoteListingView(generics.CreateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    serializer_class = PromoteListingSerializer
 
+    def perform_create(self, serializer):
+        # Automatically set the promotion start and end times
+        list_id = serializer.validated_data.get('list_id')
+        if not list_id:
+            raise ValidationError("list_id is required.")
+        
+        # Save the promotion with start and end dates
+        promote_listing = serializer.save(
+            prom_start=timezone.now(),
+            prom_end=timezone.now() + timezone.timedelta(days=30),
+            list_id=list_id
+        )
+
+        # Get the amount from the request body
+        amount = self.request.data.get("amount", 0)
+        amount = Decimal(amount)
+
+        # Create a transaction for the promotion action
+        transaction = Transaction.objects.create(
+            user_id=self.request.user,
+            transaction_amount=amount,  # Use the amount passed from the request
+            transaction_type='PROMOTE',
+            transaction_date=timezone.now(),
+        )
+        
+        return Response({
+            "message": "Listing promoted successfully.",
+            "transaction_id": transaction.transaction_id,
+        }, status=status.HTTP_201_CREATED)
+
+        
 class DeductCoinsView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
@@ -896,11 +1022,55 @@ class DeleteListingView(generics.UpdateAPIView):
         # Check if the listing exists in the Listing table
         try:
             listing = Listing.objects.get(list_id=listing_id)
-            listing.list_status = "archive"  # Set status to 'archive'
+
+            # Check if the listing is already archived
+            if listing.list_status == "ARCHIVED":
+                return Response({"message": "Listing is already archived"}, status=status.HTTP_200_OK)
+                
+
+            # Set status to 'ARCHIVED' and save
+            listing.list_status = "ARCHIVED"
             listing.save()
-            return Response({"message": "Listing deleted successfully"}, status=status.HTTP_200_OK)
+            return Response({"message": "Listing archived successfully"}, status=status.HTTP_200_OK)
+
         except Listing.DoesNotExist:
             raise Exception({"error": "Listing not found"})
+
+class FilteredUserListings(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, list_status):
+        status_filter = list_status
+
+        try:
+            # Filter listings associated with the user
+            user_listings = Listing.objects.filter(user_id=request.user.id)
+            
+            # Apply the status filter if provided
+            if status_filter:
+                # First, filter by the status of ListingApplication
+                user_listings = user_listings.filter(
+                    listingapplication__list_app_status=status_filter
+                )
+                
+                # Now, filter by the list_status of the Listing table, 
+                # if the status is 'APPROVED' and list_status is 'active'
+                if status_filter == 'APPROVED':
+                    user_listings = user_listings.filter(list_status='PENDING')
+
+            # Serialize the listings data
+            serializer = CarListingSerializer(user_listings, many=True)
+
+            return Response({'listings': serializer.data}, status=status.HTTP_200_OK)
+
+        except Listing.DoesNotExist:
+            print("No listings found for this user.")  # Debugging: log if no listings found
+            return Response({'error': 'No listings found for this user.'}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            print("Exception occurred:", str(e))  # Debugging: log the exception
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class UpdateListingStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -916,22 +1086,22 @@ class UpdateListingStatusView(APIView):
             amount = Decimal(amount)
 
             # Update the list_status to 'active'
-            listing.list_status = 'active'
-            listing.save() 
+            listing.list_status = 'ACTIVE'
+            listing.save()
 
             # Create a transaction for the listing status update
             transaction = Transaction.objects.create(
                 user_id=request.user,
-                amount=amount,  # Use the amount passed from the request
-                transaction_status='COMPLETED',
+                transaction_amount=amount,  # Use the amount passed from the request
+                # transaction_status='COMPLETED',
                 transaction_date=timezone.now(),
-                category='ADD LISTING'
+                transaction_type='ADD LISTING'
             )
 
             # Return a success response
             return Response({
                 "message": "Listing status updated successfully.",
-                "transaction_id": transaction.id
+                "transaction_id": transaction.transaction_id
             }, status=200)
         except Listing.DoesNotExist:
             # If the listing doesn't exist, return a 404 response
@@ -942,7 +1112,7 @@ class ListingByCategoryView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, category, *args, **kwargs):
-        queryset = Listing.objects.filter(list_content__category=category)
+        queryset = Listing.objects.filter(list_content__category=category, list_status='ACTIVE')
         if queryset.exists():
             serializer = self.serializer_class(queryset, many=True)
             return Response(serializer.data)
@@ -950,32 +1120,69 @@ class ListingByCategoryView(APIView):
             # Return an empty list if no listings are found for the category
             return Response([], status=200)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class ListingDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication] 
+    authentication_classes = [JWTAuthentication]
 
     def get(self, request, list_id, *args, **kwargs):
+        # Get the listing by list_id
         listing = get_object_or_404(Listing, list_id=list_id)
-        serializer = ListingSerializer(listing)
-        return Response(serializer.data)
+
+        # First, check if there's an approved listing application
+        listing_application = ListingApplication.objects.filter(list_id=listing, list_app_status='APPROVED').first()
+
+        # If no approved listing application, set has_active_listing to False
+        if not listing_application:
+            has_active_listing = False
+            list_app_status = None  # No approved application
+        else:
+            # If there's an approved listing application, check the Listing table for 'active' status
+            existing_active_listing = Listing.objects.filter(
+                user_id=listing.user_id,  # assuming user_id is the user who owns the listing
+                list_status='ACTIVE'
+            ).first()
+
+            if existing_active_listing:
+                # If there's an active listing, set has_active_listing to True
+                has_active_listing = True
+                list_app_status = listing_application.list_app_status  # Already 'APPROVED'
+            else:
+                # If no active listing, set has_active_listing to False
+                has_active_listing = False
+                list_app_status = listing_application.list_app_status  # 'APPROVED'
+
+        # Serialize the listing data
+        serializer = CarListingSerializer(listing)
+
+        # Extract the data (ensure it's a dict, not a list)
+        data = serializer.data if isinstance(serializer.data, dict) else serializer.data[0]
+        data['list_app_status'] = list_app_status
+        data['has_active_listing'] = has_active_listing
+
+        print("Modified Response Data: ", data)
+
+        return Response(data)
     
 class AssumptorListings(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication] 
 
-    def get(self, request):
+    def get(self, request, list_status):
         user = request.user.id
 
 
-        listings = Listing.objects.filter(user_id=user)
+        listings = Listing.objects.filter(user_id=user, list_status=list_status)
 
-        if listings.exists():
-            serializer = ListingSerializer(listings, many=True)
-            
-            return Response({'listings': serializer.data}, status=status.HTTP_200_OK)
-        else:
-            return Response({'message': 'No listing available'}, status=status.HTTP_204_NO_CONTENT)
+        print('listings')
+        print(f"Listings count: {listings.count()}")
+        print(listings.query)
+
+        serializer = ListingSerializer(listings, many=True)
+        print(serializer.data)
         
+        return Response({'listings': serializer.data}, status=status.HTTP_200_OK)
+    
 class AssumptorViewListings(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication] 
@@ -1088,7 +1295,6 @@ class RemoveFavoriteView(APIView):
             return Response({'error': 'Favorite not found'}, status=status.HTTP_404_NOT_FOUND)
         
 class UserProfileView(APIView):
-
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication] 
 
@@ -1102,6 +1308,22 @@ class UserProfileView(APIView):
         # Serialize the user profile data
         serializer = UserProfileSerializer(user_profile)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class DeactivateUserAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+    
+    def get(self, request):
+        user = request.user
+
+        try:
+            user.is_active = False
+            user.save()
+
+            return Response({"success": "User deactivated successfully."}, status=status.HTTP_200_OK)
+        
+        except UserModel.DoesNotExist:
+            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
 @method_decorator(csrf_exempt, name='dispatch')         
 class ListingSearchView(APIView):
@@ -1362,7 +1584,7 @@ class CreatePaypalOrder(APIView):
         }
 
         try:
-            response = requests.post(url, json=order_data, headers=auth_header)
+            response = req.post(url, json=order_data, headers=auth_header)
             response.raise_for_status()
             
             order_data = response.json()
@@ -1370,7 +1592,7 @@ class CreatePaypalOrder(APIView):
                 'id': order_data['id'],
                 'approval_url': next(link['href'] for link in order_data['links'] if link['rel'] == 'approve')
             })
-        except requests.exceptions as e:
+        except req.exceptions.RequestException as e:
             logger.error(f"PayPal API error: {str(e)}")
             return Response({'error': 'Unable to create PayPal order'}, status=500)
         
@@ -1396,24 +1618,22 @@ class CapturePaypalOrder(APIView):
         capture_url = f"https://api.sandbox.paypal.com/v2/checkout/orders/{order_id}/capture"
 
         try:
-            capture_response = requests.post(capture_url, headers=auth_header)
+            capture_response = req.post(capture_url, headers=auth_header)
             capture_response.raise_for_status()
             
             capture_data = capture_response.json()
             
             # Extract capture details from the response
             capture_id = capture_data['purchase_units'][0]['payments']['captures'][0]['id']
-            transaction_status = capture_data['status']  # e.g., 'COMPLETED'
             capture_amount = capture_data['purchase_units'][0]['payments']['captures'][0]['amount']['value']
              # Retrieve the UserAccount instance associated with the currently authenticated user
             user_account = request.user
 
             # Create a new transaction and link it to the logged-in user
             transaction = Transaction.objects.create(
-                order_id=order_id,
-                capture_id=capture_id,
-                amount=capture_amount,
-                transaction_status=transaction_status,
+                transaction_paypal_order_id=order_id,
+                transaction_paypal_capture_id=capture_id,
+                transaction_amount=capture_amount,
                 transaction_date=timezone.now(),  # Set the current timestamp
                 user_id=user_account  # Link the UserAccount instance directly
             )
@@ -1423,9 +1643,9 @@ class CapturePaypalOrder(APIView):
                 'order_id': order_id,
                 'capture_id': capture_id,
                 'amount': capture_amount,
-                'transaction_id': transaction.id  # Return the transaction ID for reference
+                'transaction_id': transaction.transaction_id  # Return the transaction ID for reference
             })
-        except requests.exceptions.RequestException as e:
+        except req.exceptions.RequestException as e:
             logger.error(f"PayPal capture error: {str(e)}")
             return Response({'error': 'Payment capture failed'}, status=500)
         
@@ -1446,7 +1666,7 @@ class RefundPayment(APIView):
                 return JsonResponse({"error": "No transaction found"}, status=404)
 
             # Prepare the refund request data
-            capture_id = transaction.capture_id
+            capture_id = transaction.transaction_paypal_capture_id
 
             if not capture_id:
                 return JsonResponse({"error": "Missing capture_id"}, status=400)
@@ -1462,9 +1682,9 @@ class RefundPayment(APIView):
             client_id = clientId
             secret_key = secretKey
             credentials = f"{client_id}:{secret_key}"
-            refund_amount = (transaction.amount * Decimal('0.95')).quantize(Decimal('0.01'), rounding=ROUND_DOWN)
+            refund_amount = (transaction.transaction_amount * Decimal('0.95')).quantize(Decimal('0.01'), rounding=ROUND_DOWN)
             # Get access token
-            auth_response = requests.post(
+            auth_response = req.post(
                 auth_url,
                 headers={
                     "Authorization": f"Basic {base64.b64encode(credentials.encode()).decode()}",
@@ -1488,7 +1708,7 @@ class RefundPayment(APIView):
             }
 
             # Make the refund request with OAuth token
-            response = requests.post(
+            response = req.post(
                 url,
                 json=refund_data,
                 headers={
@@ -1501,7 +1721,7 @@ class RefundPayment(APIView):
             # Log the response for debugging
             logger.info(f"PayPal Refund Request Details:")
             logger.info(f"Capture ID: {capture_id}")
-            logger.info(f"Amount: {transaction.amount}")
+            logger.info(f"Amount: {transaction.transaction_amount}")
             logger.info(f"Response Status: {response.status_code}")
             logger.info(f"Response Content: {response.text}")
             
@@ -1517,7 +1737,7 @@ class RefundPayment(APIView):
             # Return success response
             return JsonResponse({
                 "message": "Refund successful",
-                "transaction_id": transaction.id,
+                "transaction_id": transaction.transaction_id,
                 "order_id": transaction.order_id,
                 "refund_id": refund_response.get('id', 'N/A'),
                 "status": refund_response.get('status'),
@@ -1525,14 +1745,14 @@ class RefundPayment(APIView):
                 "refund_date": timezone.now().isoformat()
             }, status=200)
 
-        except requests.exceptions.RequestException as e:
+        except req.exceptions.RequestException as e:
             logger.error(f"Refund failed: {str(e)}")
             if hasattr(e, 'response') and hasattr(e.response, 'text'):
                 logger.error(f"PayPal error details: {e.response.text}")
             return JsonResponse({
                 "error": "Refund request failed",
                 "details": str(e),
-                "transaction_id": transaction.id if transaction else None
+                "transaction_id": transaction.transaction_id if transaction else None
             }, status=500)
         except Exception as e:
             logger.error(f"Error processing refund: {str(e)}")
@@ -1540,3 +1760,119 @@ class RefundPayment(APIView):
                 "error": "Internal server error",
                 "details": str(e)
             }, status=500)
+
+#jolito changes       
+class ReportView(APIView):
+    serializer_class = ReportSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        print("Request data:", request.data)  # Debug: print incoming request data
+        # Pass the request context to the serializer
+        serializer = self.serializer_class(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            print("Serializer data is valid.")  # Debug: print when serializer data is valid
+            report = serializer.save()  # Save the report instance
+            print("Report created:", report)  # Debug: print the created report instance
+            return Response(self.serializer_class(report).data, status=status.HTTP_201_CREATED)
+        
+        print("Serializer errors:", serializer.errors)  # Debug: print serializer errors
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+class NotificationListView(APIView):
+    authentication_classes = [JWTAuthentication]  # Specify your custom JWTAuthentication
+    permission_classes = [permissions.IsAuthenticated]  # Ensure this is set to IsAuthenticated or a custom permission
+
+    def get(self, request):
+
+        notifications = Notification.objects.filter(recipient=request.user)
+        serializer = NotificationSerializer(notifications, many=True, context={'request': request})
+
+        return Response(serializer.data)
+
+class MarkNotificationAsReadView(generics.UpdateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def patch(self, request, pk):
+        try:
+            print(f"Current user: {request.user}")  # Log the authenticated user
+            notification = Notification.objects.get(notif_id=pk, recipient=request.user)
+            print(f"Notification: {notification}")  # Log the notification details
+            notification.notif_is_read = True
+
+            
+            notification.save()
+            return Response({"message": "Notification marked as read"}, status=status.HTTP_200_OK)
+        except Notification.DoesNotExist:
+            return Response({"error": "Notification not found"}, status=status.HTTP_404_NOT_FOUND)
+
+#jericho update
+from django.views.decorators.csrf import csrf_exempt
+@csrf_exempt
+def save_fcm_token(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        fcm_token = data.get('fcm_token')
+
+        if not user_id or not fcm_token:
+            return JsonResponse({'error': 'User ID and FCM token are required'}, status=400)
+
+        # Save FCM token in the database (model to be created)
+        UserAccount.objects.filter(id=user_id).update(fcm_token=fcm_token)
+
+        return JsonResponse({'message': 'FCM Token saved successfully!'}, status=200)
+    
+
+#jericho's rating update
+class RateUserView(APIView):
+    serializer_class = RatingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        print("Request data:", request.data)  # Debug: print incoming request data
+
+        # Get the authenticated user as the from_user
+        from_user = request.user
+        print("from user:", from_user.id)
+
+        # Retrieve `to_user_id` from the request data
+        to_user_id = request.data.get('to_user_id')
+        if not to_user_id:
+            return Response({"detail": "Missing 'to_user_id' in request data."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate and get the `to_user` using `to_user_id`
+        try:
+            to_user = get_object_or_404(UserAccount, id=to_user_id)
+        except Http404:
+            return Response({"detail": "No user found with the provided 'to_user_id'."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Check if a rating already exists
+        rating_instance = Rating.objects.filter(from_user_id=from_user, to_user_id=to_user).first()
+
+        # If a rating exists, update it
+        if rating_instance:
+            serializer = self.serializer_class(rating_instance, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()  # Update the existing rating
+                print("Rating updated:", serializer.data)  # Debug: print the updated rating instance
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            print("Serializer errors:", serializer.errors)  # Debug: print serializer errors
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # If no rating exists, create a new one
+        request.data['from_user_id'] = from_user.id
+        request.data['to_user_id'] = to_user_id
+        serializer = self.serializer_class(data=request.data)
+
+        if serializer.is_valid():
+            rating = serializer.save()  # Save the new rating instance
+            print("Rating created:", rating)  # Debug: print the created rating instance
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        print("Serializer errors:", serializer.errors)  # Debug: print serializer errors
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

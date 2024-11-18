@@ -1,18 +1,19 @@
 {% extends "base/base.html" %}
-{% load static %} 
+{% load static %}
 
 {% block content %}
-<link rel="stylesheet" href="{% static 'css/users.css' %}">
+<link rel="stylesheet" href="{% static 'css/reports.css' %}">
 <div class="col bg-white rounded mx-2 my-2 px-3 py-1">
     <div class="d-flex justify-content-center mx-0">
         <div class="row w-50">
+            <!-- Search Input -->
             <div class="input-group input-group-sm my-3 border border-dark" style="border-radius: 20px; height: 45px;">
                 <div class="input-group-prepend align-self-center">
                     <span class="input-group-text bg-transparent border border-0">
                         <i class="fa-solid fa-magnifying-glass"></i>
                     </span>
                 </div>
-                <input id="search_input" type="text" oninput="hasText()" class="form-control border-0 shadow-none" aria-label="Small" aria-describedby="inputGroup-sizing-sm" placeholder="Search"/>
+                <input id="search_input" type="text" oninput="hasText()" class="form-control border-0 shadow-none" aria-label="Small" placeholder="Search reports"/>
 
                 <div class="input-group-prepend ml-3 align-self-center">
                     <span class="input-group-text bg-transparent m-0 border border-0 circle" style="display:none;">
@@ -23,48 +24,45 @@
                 </div>
             </div>
         </div>
-        <div class="row mx-3">
-            <div class="input-group input-group-sm my-3 p-0 border border-dark" style="border-radius: 20px;">
-                <select id="category_list" class="form-select border border-0" style="border-radius:20px;" aria-label="Default select example">
-                    <option selected value="all">---All---</option>
-                    <option selected value="Assumptors">Approved</option>
-                    <option selected value="Assumees">Rejected</option>
-                </select>
-            </div>
-        </div>
+
+    
     </div>
-    <div>
+
     <br><br>
+
+    <!-- Table for displaying reports -->
     <div class="col px-2 pt-1">
-                <table id="admin_list" class="table table-sm table bordered" width="100%">
-                    <thead>
-                        <tr>
-                            <th class="fs-9 text-center" width="20%">User ID</th>
-                            <th class="fs-9 text-center" width="20%">Full Name</th>
-                            <th class="fs-9 text-center" width="20%">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="marquee">1003</td>
-                            <td class="marquee">Joselito Gumban</td>
-                            <td class="marquee">
-                                <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target=""><i class="fa-regular fa-eye"></i></button>
-                                <a class="btn btn-sm" href="" style="background-color: green; color: white; border: none;"><i class="fas fa-check"></i></a>                                
-                                <a class="btn btn-sm btn-danger" heref=""><i class="fa-solid fa-circle-xmark"></i></a>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="marquee">1004</td>
-                            <td class="marquee">Patricia Divine Delar</td>
-                            <td class="marquee">
-                                <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target=""><i class="fa-regular fa-eye"></i></button>
-                                <a class="btn btn-sm" href="" style="background-color: green; color: white; border: none;"><i class="fas fa-check"></i></a>                                
-                                <a class="btn btn-sm btn-danger" heref=""><i class="fa-solid fa-circle-xmark"></i></a>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+        <table id="admin_list" class="table table-sm table-bordered" width="100%">
+            <thead>
+                <tr>
+                    <th>Report ID</th>
+                    <th>Details</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="report_table_body">
+                {% for report in reports %}
+                <tr data-status="{{ report.report_status }}">
+                    <td>{{ report.report_id }}</td>
+                    <td>    <strong>User ID:</strong> {{ report.report_details.user_id }}<br>
+                        <strong>Reported User ID:</strong> {{ report.report_details.reported_user_id }}<br></td>
+                    <td>{{ report.report_status }}</td> 
+                    <td>
+                        <a type="button" class="btn btn-sm btn-info" href="{% url 'report_detail_view' report.report_id %}">
+                            <i class="fa-regular fa-eye"></i>
+                        </a>
+                        <a class="btn btn-sm btn-danger" href="" >
+                            <i class="fa-solid fa-circle-xmark"></i>
+                        </a>
+                        
+                    </td>
+                </tr>
+                {% endfor %}
+
+
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -74,5 +72,8 @@
 <script src='https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js'></script>
 <script src='https://cdn.datatables.net/responsive/2.1.0/js/dataTables.responsive.min.js'></script>
 <script src='https://cdn.datatables.net/1.13.5/js/dataTables.bootstrap5.min.js'></script>
-<script src="{% static 'scripts/invv.js' %}"></script>
+<script src="{% static 'scripts/report_user.js' %}"></script>
+
+
+
 {% endblock content %}

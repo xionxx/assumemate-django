@@ -21,7 +21,7 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.views.decorators.http import require_POST
 from django.contrib import messages
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Avg, Count, F
 from .permissions import IsAdminUser
 from .models import *
 from rest_framework import viewsets, status, permissions
@@ -126,6 +126,8 @@ def send_welcome_email(user_profile, user_account, temp_password):
         print('Error sending welcome email with PDF:', e)
         return JsonResponse({'error': f'Error sending welcome email with PDF: {e}'})
 
+# @login_required
+# @user_passes_test(is_admin)
 @csrf_protect
 def upperuser_register(request, user_type):
     if request.method == 'POST':
@@ -190,7 +192,7 @@ def upperuser_register(request, user_type):
 @csrf_protect
 def user_login(request):
     if request.user.is_authenticated:
-        return redirect('admin_acc_create')
+        return redirect('dashboard')
 
     if request.method == 'POST':
         email = request.POST.get('email')
@@ -203,18 +205,20 @@ def user_login(request):
         print(user)
         if user is not None:
             login(request, user)
-            return redirect('admin_acc_create')
+            return redirect('dashboard')
         else:
             print("Authentication failed")
             return JsonResponse({'auth_failed': 'Incorrect email or password'})
         
     return render(request, 'base/login.html')
 
+@login_required
 def edit_profile(request):
     profile = request.user.profile
     context = {'user': request.user, 'profile': profile}
     return render(request, 'base/edit_profile.html', context)
 
+@login_required
 def update_profile(request):
     if request.method == 'POST':
         address = request.POST.get('address')
@@ -232,7 +236,7 @@ def update_profile(request):
 
     return HttpResponse('Bad request', status=400)
 
-# @login_required(login_url='user_login')
+@login_required
 def change_password(request):
     if request.method == 'POST':
         user = request.user
@@ -289,10 +293,11 @@ def reset_password_page(request):
     except Exception as e:
         return redirect('forgot_password')
 
+@login_required
 def pending_accounts_view(request):
     pending_applications = UserApplication.objects.filter(user_app_status='PENDING')
-    pending_assumptors = pending_applications.filter(user_prof_id__user_id__is_assumptor=True)
-    pending_assumees = pending_applications.filter(user_prof_id__user_id__is_assumee=True)
+    pending_assumptors = pending_applications.filter(user_id__is_assumptor=True)
+    pending_assumees = pending_applications.filter(user_id__is_assumee=True)
     context = {
         'pending_assumptors': pending_assumptors,
         'pending_assumees': pending_assumees,
@@ -300,6 +305,7 @@ def pending_accounts_view(request):
     
     return render(request, 'base/rev_pending_users.html', context)
 
+@login_required
 def assumemate_rev_report_users(request):
     reports = Report.objects.filter(report_status='PENDING')
     context = {
@@ -307,38 +313,48 @@ def assumemate_rev_report_users(request):
     }
     return render(request, 'base/rev_reported_users.html', context)
 
+@login_required
 def user_detail_view(request, user_id):
-    user = get_object_or_404(UserModel, pk=user_id)
+    user = get_object_or_404(UserAccount, pk=user_id)
     return render(request, 'base/user_detail.html', {'user': user})
 
+@login_required
 def assumemate_users(request):
     status = request.GET.get('status', 'all')  # Get the selected category
-    application = UserApplication.objects.select_related('user_prof_id', 'user_app_reviewer_id')
+    application = UserApplication.objects.select_related('user_id', 'user_app_reviewer_id')
 
     # Filter based on status
     if status == 'Assumptors':
-        application = application.filter(user_prof_id__user_id__is_assumptor=True)
+        application = application.filter(user_id__is_assumptor=True)
     elif status == 'Assumees':
-        application = application.filter(user_prof_id__user_id__is_assumee=True)
+        application = application.filter(user_id__is_assumee=True)
     elif status == 'Suspend':
-        application = application.none()  # Assuming no logic for Suspend, modify as needed
+        application = application.filter(user_app_status='SUSPENDED')  # Modify if suspend logic is different
     else:
-        application = application.filter(Q(user_prof_id__user_id__is_assumptor=True) | Q(user_prof_id__user_id__is_assumee=True))
+        application = application.filter(
+            Q(user_id__is_assumptor=True) | Q(user_id__is_assumee=True)
+        )
 
+    # User count stats
     assumptor_count = UserModel.objects.filter(is_assumptor=True).count()
     assumee_count = UserModel.objects.filter(is_assumee=True).count()
-
+    isadmin_count = UserModel.objects.filter(is_staff=True).count()
+    isreviewer_count = UserModel.objects.filter(is_reviewer=True).count()
     total_user = assumptor_count + assumee_count
 
+    # Prepare context data
     context = {
         'assumptor_count': assumptor_count,
         'assumee_count': assumee_count,
-        'total_user' : total_user,
-        'application' : application
+        'isadmin_count': isadmin_count,
+        'isreviewer_count': isreviewer_count,
+        'total_user': total_user,
+        'application': application,
     }
 
     return render(request, 'base/users.html', context)
 
+@login_required
 def assumemate_listing(request):
 
     current_date = timezone.now()
@@ -360,9 +376,9 @@ def assumemate_listing(request):
     category_count_dict = {cat['list_content__category']: cat['count'] for cat in category_counts}
 
     # Get counts for each specific category with a default of zero
-    house_and_lot_count = category_count_dict.get('House and Lot', 0)
-    cars_count = category_count_dict.get('Cars', 0)
-    motorcycles_count = category_count_dict.get('Motorcycles', 0)
+    house_and_lot_count = category_count_dict.get('Real Estate', 0)
+    cars_count = category_count_dict.get('Car', 0)
+    motorcycles_count = category_count_dict.get('Motorcycle', 0)
 
     # Retrieve all distinct categories for the dropdown
     categories = Listing.objects.values('list_content__category').distinct()
@@ -397,11 +413,13 @@ def assumemate_listing(request):
 
     return render(request, 'base/listing.html', context)
 
+@login_required
 def users_view_details(request, user_id):
     current_date = timezone.now()
+    user_id = UserModel.objects.get(id=user_id)
     print(f"Requested user_id: {user_id}")  # Debugging line
-    user_profile = get_object_or_404(UserProfile, user_prof_id=user_id)
-    user_details = UserApplication.objects.select_related('user_prof_id', 'user_app_reviewer_id').filter(user_prof_id=user_profile).first()
+    user_profile = get_object_or_404(UserProfile, user_id=user_id)
+    user_details = UserApplication.objects.select_related('user_id', 'user_app_reviewer_id').filter(user_id=user_id).first()
     
     # Fetch listings posted by this user (Assumptor)
     user_listings = Listing.objects.filter(user_id=user_profile.user_id)
@@ -431,14 +449,6 @@ def users_view_details(request, user_id):
     
     return render(request, 'base/users_view_details.html', context)
 
-def accept_report(request, report_id):
-    report = get_object_or_404(Report, report_id=report_id)
-    report.report_status = 'APPROVED'
-    report.updated_at = timezone.now()
-    report.save()
-    messages.success(request, 'Report has been accepted.')
-    return redirect('assumemate_rev_report_users')  
-
 def reject_report(request, report_id):
     if request.method == 'POST':
         report = get_object_or_404(Report, report_id=report_id)
@@ -453,29 +463,29 @@ def reject_report(request, report_id):
     messages.error(request, 'Invalid request method.')
     return redirect('some_error_view') 
 
+@login_required
 def report_detail_view(request, report_id):
     userreport = get_object_or_404(Report, pk=report_id)
     return render(request, 'base/report_detail.html', {'userreport': userreport})
 
+@login_required
 def platform_report(request):
-    # Count the different user types
-    assumptors_count = UserModel.objects.filter(is_assumptor=True).count()
-    assumees_count = UserModel.objects.filter(is_assumee=True).count()
-    total_users_count = UserModel.objects.filter(Q(is_assumptor=True) | Q(is_assumee=True)).count()
-    admins_count = UserModel.objects.filter(is_superuser=True).count()
-    reviewers_count = UserModel.objects.filter(is_reviewer=True).count()
-    active_accounts_count = UserModel.objects.filter(Q(is_active=True) & (Q(is_assumptor=True) | Q(is_assumee=True))).count()
-    inactive_accounts_count = UserModel.objects.filter(Q(is_active=False) & (Q(is_assumptor=True) | Q(is_assumee=True))).count()
+
+    assumptors_count = UserAccount.objects.filter(is_assumptor=True).count()
+    assumees_count = UserAccount.objects.filter(is_assumee=True).count()
+    total_users_count = UserAccount.objects.filter(Q(is_assumptor=True) | Q(is_assumee=True)).count()
+    admins_count = UserAccount.objects.filter(is_superuser=True).count()
+    reviewers_count = UserAccount.objects.filter(is_reviewer=True).count()
+    active_accounts_count = UserAccount.objects.filter(Q(is_active=True) & (Q(is_assumptor=True) | Q(is_assumee=True))).count()
+    inactive_accounts_count = UserAccount.objects.filter(Q(is_active=False) & (Q(is_assumptor=True) | Q(is_assumee=True))).count()
     promoted_listings_count = PromoteListing.objects.count()
 
-    # Prepare data for user growth chart
-    user_growth_data = UserModel.objects.annotate(month=ExtractMonth('date_joined')) \
+    user_growth_data = UserAccount.objects.annotate(month=ExtractMonth('date_joined')) \
         .values('month') \
         .annotate(count=Count('id')) \
         .order_by('month')
 
-    # Prepare data for Assumptors and Assumees per month
-    user_type_data = UserModel.objects.annotate(month=ExtractMonth('date_joined')) \
+    user_type_data = UserAccount.objects.annotate(month=ExtractMonth('date_joined')) \
         .values('month') \
         .annotate(
             assumptors_count=Count('id', filter=Q(is_assumptor=True)),
@@ -491,7 +501,7 @@ def platform_report(request):
         assumptors_counts.append(entry['assumptors_count'])
         assumees_counts.append(entry['assumees_count'])
 
-    # Prepare data for the first user growth chart
+
     months_growth = []
     user_counts = []
     for entry in user_growth_data:
@@ -514,14 +524,15 @@ def platform_report(request):
     }
     return render(request, 'base/reports.html', context)
 
+@login_required
 def listing_view_details(request, user_id, list_id):
     current_date = timezone.now()
 
-    # Debug: Print the user_id and list_id being passed
+
     print(f"Requested listing user_id: {user_id}")
     print(f"Requested listing list_id: {list_id}")
 
-    # Fetch the specific listing or return 404
+
     listing = get_object_or_404(Listing, user_id=user_id, list_id=list_id)
 
     # Debug: Print the listing to verify it's being fetched correctly
@@ -561,6 +572,7 @@ def listing_view_details(request, user_id, list_id):
     }
     return render(request, 'base/listing_view_details.html', context)
 
+@login_required
 def assumemate_rev_pending_list(request):
     pending_listings = ListingApplication.objects.filter(list_app_status='PENDING').select_related('list_id')
     
@@ -570,12 +582,13 @@ def assumemate_rev_pending_list(request):
     
     return render(request, 'base/rev_pending_listing.html', context)
 
-@login_required(login_url='user_login')
+@login_required
 def logout_user(request):
     if request.user.is_authenticated:
         logout(request)
         return redirect(user_login)
 
+@login_required
 def usertype_is_active(request, admin_id, status):
 
     user = UserModel.objects.get(id=admin_id)
@@ -589,53 +602,58 @@ def usertype_is_active(request, admin_id, status):
     elif user.is_reviewer:  # If the user is a Reviewer
         return redirect('reviewer_acc_list') 
 
-def approve_user(request, id):
-    try:
-        user = UserApplication.objects.get(user_prof_id=id)
-        user.user_app_status = 'APPROVED'
-        user.save()
-        return
-    except:
-        return
-    
-def reject_user(request, id):
-    try:
-        user = UserApplication.objects.get(user_prof_id=id)
-        user.user_app_status = 'REJECTED'
-        user.save()
-        return
-    except:
-        return 
 
-###### render views ######.
+@login_required
 def base(request):
     context = {}
     return render(request, "base/home.html", context)
 
 # @user_passes_test(is_admin)
-# @login_required(login_url='user_login')
+# @login_required
 def admin_acc_create(request):
     context = {'nav': 'admin', 'user_type': 'Admin'}
     return render(request, 'base/add_upperuser.html', context)
 
+@login_required
+@user_passes_test(is_admin)
 def admin_acc_list(request):
-    admin = UserModel.objects.filter(is_staff=True)
+    status = request.GET.get('status', 'all')
+    current_user = request.user  
+
+    if status == 'Active':
+        admin = UserModel.objects.filter(is_staff=True, is_active=True).exclude(id=current_user.id)
+    elif status == 'Inactive':
+        admin = UserModel.objects.filter(is_staff=True, is_active=False).exclude(id=current_user.id)
+    else:
+        admin = UserModel.objects.filter(is_staff=True).exclude(id=current_user.id)
+    
     context = {'admin': admin, 'nav': 'admin'}
-    # context = {'nav': 'admin'}
     return render(request, 'base/admin_list.html', context)
 
+@login_required
+# @user_passes_test(is_admin)
 def user_application_list(request):
     user_application = UserModel.objects.filter(is_staff=True)
     context = {'users': user_application, 'nav': 'user'}
     # context = {'nav': 'admin'}
     return render(request, 'base/users_list.html', context)
 
+@login_required
+@user_passes_test(is_admin)
 def reviewer_acc_list(request):
-    reviewer = UserModel.objects.filter(is_reviewer=True)
-    context = {'reviewer': reviewer, 'nav': 'reviewer'}
-    # context = {'nav': 'admin'}
+    status = request.GET.get('status', 'all')  # Get the filter status from the request
+    if status == 'Active':
+        reviewer = UserModel.objects.filter(is_reviewer=True, is_active=True).order_by('-date_joined')
+    elif status == 'Inactive':
+        reviewer = UserModel.objects.filter(is_reviewer=True, is_active=False).order_by('-date_joined')
+    else:
+        reviewer = UserModel.objects.filter(is_reviewer=True).order_by('-date_joined')
+    
+    context = {'reviewer': reviewer, 'nav': 'reviewer'}  # Ensure this matches your template
     return render(request, 'base/reviewer_list.html', context)
 
+@login_required
+@user_passes_test(is_admin)
 def reviewer_acc_create(request):
     context = {'nav': 'reviewer', 'user_type': 'Reviewer'}
     return render(request, 'base/add_upperuser.html', context)
@@ -673,6 +691,9 @@ def send_reset_link(request):
             template_name=template_name,
             context=context
             )
+        
+        print(base_url)
+        print(reset_link)
         
         email_message = EmailMessage(
         subject='[ASSUMATE Account] Password reset request',
@@ -756,3 +777,301 @@ def paypal_return_link(request):
     Paypal.objects.create(user_id=user, paypal_merchant_id=hashed_merchant_id)
 
     return render(request, 'base/onboarding_success.html')
+
+#JERICHO
+def assumemate_rev_pending_users(request):
+    context={}
+    return render(request, 'base/rev_pending_users.html', context)
+
+@login_required
+def listing_detail_view(request, list_app_id):
+    print(list_app_id)
+    listing_application = get_object_or_404(ListingApplication, list_app_id=list_app_id)
+    listing = get_object_or_404(Listing, list_id=listing_application.list_id_id)
+
+    pending_listings = ListingApplication.objects.filter(list_app_status='PENDING')
+
+    context = {
+        'listing': listing,
+        'listing_application': listing_application,
+        'pending_listings': pending_listings,
+    }
+    return render(request, 'base/listing_detail.html', context)
+
+@login_required
+def accept_listing(request, list_app_id):
+    if request.method == 'POST':
+        listing_application = get_object_or_404(ListingApplication, list_app_id=list_app_id)
+        listing_application.list_app_status = 'ACCEPTED'
+        listing_application.list_reason = request.POST.get('list_reason', '')  
+        listing_application.list_app_reviewer_id = request.user
+
+        listing = listing_application.list_id
+        assumee_user = listing.user_id
+
+        current_date = timezone.now()
+        current_year = current_date.year
+        current_month = current_date.month
+
+        existing_listings = ListingApplication.objects.filter(
+            list_id__user_id=assumee_user,
+            list_app_date__year=current_year,
+            list_app_date__month=current_month,
+            list_app_status='ACCEPTED'
+        ).exclude(list_app_id=list_app_id)
+
+        if not existing_listings.exists():
+            listing.list_status = 'ACTIVE' 
+        else:
+            listing.list_status = 'PENDING'  
+
+        listing_application.save()
+        listing.save()
+
+        messages.success(request, 'Listing application has been accepted.')
+        return redirect('assumemate_rev_pending_list')
+
+    messages.error(request, 'Invalid request method.')
+    return redirect('some_error_view')
+
+
+
+@login_required
+def reject_listing(request, list_app_id):
+    if request.method == 'POST':
+        listing_application = get_object_or_404(ListingApplication, list_app_id=list_app_id)
+
+        listing_application.list_app_status = 'REJECTED'
+        listing_application.list_reason = request.POST.get('list_reason', '')  
+        listing_application.save()
+
+    # listing_images = listing_application.list_id.list_content.get('images', [])
+    # user_account = listing_application.list_id.user_id
+    # fcm_token = user_account.fcm_token  
+
+    # if listing_images:
+    #     first_image_url = listing_images[0]  
+    # else:
+    #     first_image_url = None  
+
+    # if fcm_token:
+    #     title = 'Listing Application Rejected'
+    #     message = 'Your Listing Application has been rejected.'
+    #     send_push_notification(fcm_token, title, message)
+        
+    messages.success(request, 'Listing application has been rejected.')
+    return redirect('assumemate_rev_pending_list')  
+
+@login_required
+def accept_user(request, user_id):
+    # Fetch the user application object based on the user_id
+    user_application = get_object_or_404(UserApplication, user_id=user_id)
+    
+    # Update the user application status to 'ACCEPTED'
+    user_application.user_app_status = 'ACCEPTED'
+    user_application.user_app_approved_at = timezone.now()
+    user_application.user_app_reviewer_id = request.user  # Assuming the request user is the reviewer
+    user_application.save()
+
+    # Fetch the user account associated with the user_application
+    user_account = user_application.user_id
+    user_account.is_active = True
+    user_account.save()
+
+    # Get the FCM token from the UserAccount model
+    # fcm_token = user_account.fcm_token  # Make sure the FCM token field exists in UserAccount
+
+    # if fcm_token:
+    #     # Send a notification to the user about the acceptance of their application
+    #     title = 'Application Accepted'
+    #     message = 'Your user application has been accepted.'
+    #     send_push_notification(fcm_token, title, message)
+    
+    # Display success message to the admin
+    messages.success(request, 'User application has been accepted.')
+
+    # Redirect to the pending accounts view
+    return redirect('pending_accounts_view')
+
+@login_required
+def reject_user(request, user_id):
+    if request.method == 'POST':
+        user_application = get_object_or_404(UserApplication, user_id=user_id)
+        user_application.user_app_status = 'REJECTED'
+        user_application.user_app_declined_at = timezone.now()
+        user_application.user_reason = request.POST.get('user_reason', '')  
+        user_application.user_app_reviewer_id = request.user
+        user_application.save()
+
+    user_account = user_application.user_id
+    fcm_token = user_account.fcm_token  # Make sure the FCM token field exists in UserAccount
+
+    if fcm_token:
+        # Send a notification to the user about the acceptance of their application
+        title = 'Application Rejected'
+        message = 'Your user application has been rejected.'
+        send_push_notification(fcm_token, title, message)
+
+        messages.success(request, 'User application has been rejected.')
+        return redirect('pending_accounts_view')
+
+    messages.error(request, 'Invalid request method.')
+    return redirect('pending_accounts_view')
+
+@login_required
+def accept_report(request, report_id):
+    report = get_object_or_404(Report, report_id=report_id)
+    report.report_status = 'APPROVED'
+    report.updated_at = timezone.now()
+    report.reviewer = request.user # toy mao rani ibutang para sa katung reviewer i edit lang iif unsay fieldname nimo sa reviewer
+    report.save()
+    messages.success(request, 'Report has been accepted.')
+    return redirect('assumemate_rev_report_users')  
+
+@login_required
+def reject_report(request, report_id):
+    if request.method == 'POST':
+        report = get_object_or_404(Report, report_id=report_id)
+        report.report_status = 'REJECTED'
+        report.updated_at = timezone.now() 
+        report.reviewer = request.user # toy mao rani ibutang para sa katung reviewer i edit lang iif unsay fieldname nimo sa reviewer
+        report.report_reason = request.POST.get('report_reason', '')  
+        report.save()
+        
+        messages.success(request, 'Report has been rejected.')
+        return redirect('assumemate_rev_report_users')  
+
+    messages.error(request, 'Invalid request method.')
+    return redirect('some_error_view') 
+
+
+ #JOSELITO
+@login_required
+def dashboard(request):
+    profiles = UserProfile.objects.filter(
+        user_id__ratings_received__rating_value__gte=4.5  # Filter users with rating >= 4.5
+    ).annotate(
+        average_rating=Avg('user_id__ratings_received__rating_value')  # Calculate the average rating
+    ).filter(average_rating__gte=4.5, average_rating__lte=5.0)  # Filter out users with ratings below 4.5 or above 5.0
+
+    # Manually calculate the average rating for each profile
+    for profile in profiles:
+        ratings = [rating.rating_value for rating in profile.user_id.ratings_received.all()]
+        profile.calculated_avg = sum(ratings) / len(ratings) if ratings else 0
+
+    # Count of pending Assumptor applications
+    pending_assumee_count = UserApplication.objects.filter(user_app_status="PENDING",user_id__is_assumee=True).count()
+
+    # Count of pending Assumptor applications
+    pending_assumptor_count = UserApplication.objects.filter(user_app_status="PENDING",user_id__is_assumptor=True).count()
+
+    #Count of pedning Listing applications
+    pending_listings_count = ListingApplication.objects.filter(list_app_status="PENDING").count()
+
+    #total pending application
+    total_pending = pending_assumee_count + pending_assumptor_count + pending_listings_count
+
+    #most promoted listing
+     # Filter promoted listings that have been approved
+    approved_promoted_listings = PromoteListing.objects.filter(
+        list_id__list_status="APPROVED"
+    ).select_related('list_id')
+
+    # Count listings in each category to find the most promoted
+    most_promoted_category = approved_promoted_listings.values(
+        category=F('list_id__list_content__category')
+    ).annotate(category_count=Count('list_id')).order_by('-category_count').first()
+
+    # Calculate percentage of approved promoted listings
+    total_promoted_count = PromoteListing.objects.count()
+    approved_percentage = (approved_promoted_listings.count() / total_promoted_count) * 100 if total_promoted_count > 0 else 0
+
+    gender_count_M = UserProfile.objects.filter(user_prof_gender = "Male").count()
+    gender_count_F = UserProfile.objects.filter(user_prof_gender = "Female").count()
+
+    #doughnut category
+    real_estate_count = Listing.objects.filter(list_content__category="Real Estate", list_status="active").count()
+    motorcycle_count = Listing.objects.filter(list_content__category="Motorcycle", list_status="active").count()
+    car_count = Listing.objects.filter(list_content__category="Car", list_status="active").count()
+    total_category = real_estate_count + motorcycle_count + car_count
+
+    # Get suspended user count
+    suspended_user_count = SuspendedUser.objects.count()
+
+    # Get the total number of reported users
+    total_reported_users = Report.objects.count()
+
+    # Get the number of reported users with 'APPROVED' status
+    approved_reports = Report.objects.filter(report_status='APPROVED').count()
+
+    # Get the number of reported users with 'PENDING' status
+    pending_reports = Report.objects.filter(report_status='PENDING').count()
+
+    # Calculate percentages (you can adjust these as needed)
+    if total_reported_users > 0:
+        report_user_percentage = (approved_reports / total_reported_users) * 100
+    else:
+        report_user_percentage = 0
+
+    if suspended_user_count > 0:
+        suspended_user_percentage = (suspended_user_count / total_reported_users) * 100
+    else:
+        suspended_user_percentage = 0
+
+    # Pass the counts to the template context
+    context = {
+        'real_estate_count': real_estate_count,
+        'motorcycle_count': motorcycle_count,
+        'car_count': car_count,
+        'total_category': total_category, 
+        'gender_count_M': gender_count_M,
+        'gender_count_F' : gender_count_F,
+        'pending_assumee_count' : pending_assumee_count,
+        'pending_assumptor_count' : pending_assumptor_count,
+        'pending_listings_count' : pending_listings_count,
+        'total_pending' : total_pending,
+        'approved_percentage': approved_percentage,
+        'most_promoted_category': most_promoted_category['category'] if most_promoted_category else None,
+        'category_count': most_promoted_category['category_count'] if most_promoted_category else 0,
+        'profiles' : profiles, #most user's rate
+
+        'report_user_percentage': report_user_percentage,
+        'suspended_user_percentage': suspended_user_percentage,
+        'suspended_user_count': suspended_user_count,
+        'approved_reports': approved_reports,
+        'pending_reports': pending_reports,
+
+    }
+    return render(request, 'base/dashboard.html', context)
+
+@login_required
+def admin_details(request, admin_id):
+    try:
+        admin = UserAccount.objects.get(id=admin_id)
+    except UserAccount.DoesNotExist:
+        return HttpResponse("Admin not found")
+    context ={'admin': admin, 'nav': 'admin'}
+    return render(request, 'base/admin_deets.html', context)
+
+@login_required
+def reviewer_details(request, reviewer_id):
+    try:
+        reviewer = UserModel.objects.get(id=reviewer_id)
+    except UserModel.DoesNotExist:
+        return HttpResponse("Reviewer not found")
+    context ={'reviewer': reviewer, 'nav': 'reviewer'}
+    return render(request, 'base/reviewer_deets.html', context)
+
+@login_required
+def toggle_user_status(request, user_id, user_type, status):
+    user_model = UserModel  # Replace this with your actual model if different
+    user = user_model.objects.get(id=user_id)
+    user.is_active = status
+    user.save()
+
+    # Redirect based on user_type
+    if user_type == 'admin?':
+        return redirect('admin_acc_list')
+    elif user_type == 'reviewer':
+        return redirect('reviewer_acc_list')
+    

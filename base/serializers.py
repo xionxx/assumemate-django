@@ -25,6 +25,11 @@ from django.contrib.sites.shortcuts import get_current_site
 load_dotenv()
 UserModel = get_user_model()
 
+class PromoteListingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PromoteListing
+        fields = ['list_id']  # Adjust fields as necessary
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField()
     google_id = serializers.CharField(max_length=255, required=False, allow_blank=True)
@@ -359,12 +364,12 @@ class UserGoogleLoginSerializer(serializers.Serializer):
             user = UserModel.objects.filter(Q(google_id=google_id) & Q(email = email)).first()
 
             if not user:
-                return serializers.ValidationError({'error': 'No user associated with the google found'})
+                raise serializers.ValidationError({'error': 'No user associated with the google found'})
             
             return user
 
         except ValueError as e:
-            return serializers.ValidationError({'error': f'Invalid token: {e}'})
+            raise serializers.ValidationError({'error': f'Invalid token: {e}'})
 
 
 # class GoogleSignInCheckSerializer(serializers.Serializer):
@@ -485,6 +490,12 @@ class FollowSerializer(serializers.ModelSerializer):
         model = Follow
         fields = ['follower_id', 'following_id']
 
+class OrderListingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderListing
+        fields = '__all__'
+
+#jolito changes
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
@@ -499,10 +510,55 @@ class ReportSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+
+
+
+
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction
-        fields = ['amount', 'transaction_status', 'transaction_date', 'category']
+        fields = ['transaction_amount', 'transaction_date', 'transaction_type']
+
+class NotificationSerializer(serializers.ModelSerializer):
+    triggered_by_profile_pic = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            'notif_id',
+            'notif_message',
+            'notif_created_at',
+            'notif_is_read',
+            'recipient',
+            'list_id',
+            'triggered_by',
+            'notification_type',
+            'follow_id',
+            'triggered_by_profile_pic', 
+                ]
+
+    def get_triggered_by_profile_pic(self, obj):
+       
+        if obj.triggered_by:
+            user_profile = obj.triggered_by.profile  
+            if user_profile and user_profile.user_prof_pic:  
+                return user_profile.user_prof_pic 
+        return None
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        created_at = instance.notif_created_at
+        formatted_created_at = created_at.strftime("%B %d, %Y at %I:%M %p")
+        data['notif_created_at'] = formatted_created_at
+        return data
+    
+#jericho's serializers.py
+class RatingSerializer(serializers.ModelSerializer):
+    rating_value = serializers.FloatField()
+
+    class Meta:
+        model = Rating
+        fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment']
 
 ###############################
 ###############################

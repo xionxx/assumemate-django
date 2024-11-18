@@ -10,7 +10,7 @@
         <div class="left-container">
             <div class="card position-relative"> <!-- Add position-relative to the card -->
                 <div class="card-body">
-                    <p class="card-text"><strong>Full name:</strong> {{user_profile.user_prof_fname}} {{user_profile.user_prof_lname}} ({{user_profile.user_prof_id}})</p>
+                    <p class="card-text"><strong>Full name:</strong> {{user_profile.user_prof_fname}} {{user_profile.user_prof_lname}} ({{user_details.user_id.email}})</p>
                     <p class="card-text">
                         <strong>Approved by:</strong> 
                         {% if user_details.user_app_reviewer_id %}
@@ -23,9 +23,8 @@
                     </p>
                     <p class="card-text"><strong>Date and Time: </strong>{{user_details.user_app_approved_at}}</p>
 
-                    <img src="{{ user_profile.user_image }}" class="img-fluid fixed-size-img profile-img" alt="user-profile">
+                    <img src="{{ user_profile.user_prof_pic }}" class="img-fluid fixed-size-img profile-img" alt="user-profile">
 
-                        
                     <p class="card-text"><strong>Details: 
                         {% if user_details.user_prof_id.user_id.is_assumptor %}
                             Assumptor
@@ -33,47 +32,57 @@
                             Assumee
                         {% endif %}
                     </strong></p>
-                    <ul style="font-size: 12px;">
-                        <li><strong>Gender:</strong> {{user_profile.user_prof_gender}}</li>
-                        <li><strong>Date of Birth:</strong> {{user_profile.user_prof_dob}}</li>
-                        <li><strong>Mobile Number:</strong> {{user_profile.user_prof_mobile}}</li>
-                        <li><strong>Address:</strong> {{user_profile.user_prof_address}}</li>
-                        
-                    </ul>
+                    <table style="font-size: 12px; width: 100%; border-collapse: separate;">
+                        <tr>
+                            <td><strong>Sex:</strong></td>
+                            <td>{{user_profile.user_prof_gender}}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Date of Birth:</strong></td>
+                            <td>{{user_profile.user_prof_dob}}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Mobile Number:</strong></td>
+                            <td>{{user_profile.user_prof_mobile}}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Address:</strong></td>
+                            <td class="ellipsis1">{{user_profile.user_prof_address}}</td>
+                        </tr>
+                    </table>
 
-                    <!-- List to display images -->
-                    <div class="container text-center my-3">
-                        <div class="list-wrapper">
-                            <ul class="list">
-                                <li class="item">
-                                    <div class="content">
-                                        <a href="#" class="link-text" data-bs-toggle="modal" data-bs-target="#galleryModal">See Photos</a>
-                                    </div>
-                                </li>
-                            </ul>
+                    <div class="row justify-content-center mt-3">
+                        <div class="col-4">
+                            <img src="{{ user_profile.user_prof_pic }}" class="img-fluid rounded" alt="Profile Picture" 
+                                onclick="showImageModal('{{ user_profile.user_prof_pic }}')">
+                        </div>
+                        <div class="col-4">
+                            <img src="{{ user_profile.user_prof_valid_id }}" class="img-fluid rounded" alt="Valid ID" 
+                                onclick="showImageModal('{{ user_profile.user_prof_valid_id }}')">
                         </div>
                     </div>
 
-                    <div class="modal fade" id="galleryModal" tabindex="-1" aria-labelledby="galleryModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title" id="galleryModalLabel">Assumptor/Assumee Image</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="row">
-                                    <div class="col-6">
-                                        <img src="{{ user_profile.user_image }}" class="img-fluid rounded" alt="Image 1">
-                                    </div>
-                                    <div class="col-6">
-                                        <img src="https://res.cloudinary.com/dqfvxj9h0/image/upload/v1727607737/car_listings/fbjjq8sraiamq9q4s9ma.jpg" class="img-fluid rounded" alt="Image 2">
-                                    </div>
+                    <!-- Modal for Viewing Full Image -->
+                    <div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5>
+                                        {% if user_details.user_prof_id.user_id.is_assumptor %}
+                                            Assumptor Images
+                                        {% elif user_details.user_prof_id.user_id.is_assumee %}
+                                            Assumee Images
+                                        {% endif %}
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body text-center" style="max-height: 80vh; overflow-y: auto;">
+                                    <img id="modalImage" src="" class="img-fluid rounded" alt="Full Image" style="max-height: 70vh; max-width: 100%; height: auto; width: auto;">
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+
                 </div>
             </div>
         </div>
@@ -103,8 +112,6 @@
                 </div>
             </div>
         </div>
-
-
     </div>
 
     <!-- Back Button -->
@@ -118,78 +125,91 @@
 <style>
     .container-flex {
         display: flex;
-        justify-content: space-between; /* Space between the two divs */
-         /* Ensures both containers have the same height */
+        justify-content: space-between;
     }
     .left-container {
-        flex: 3; /* Makes the left div larger */
-        margin-right: 20px; /* Space between left and right divs */
-        position: relative; /* Allow absolute positioning inside */
+        flex: 3;
+        margin-right: 20px;
+        position: relative;
     }
     .right-container {
-        flex: 1; /* Makes the right div smaller */
-        display: flex; /* Enables flexbox layout for the right container */
-        flex-direction: column; /* Stacks children vertically */
+        flex: 1;
+        display: flex;
+        flex-direction: column;
     }
     .fixed-size-img {
-        width: 50%; /* Adjusts image to fill the container */
-        height: auto; /* Maintains aspect ratio */
-        max-width: 150px; /* Sets a maximum width for the image */
+        width: 50%;
+        height: auto;
+        max-width: 150px;
     }
     .profile-img {
-        position: absolute; /* Positioning the image absolutely */
-        top:40px; /* Adjust this value to position vertically */
-        right: 100px; /* Adjust this value to position horizontally */
-        max-width: 125px; /* You can change this size based on your requirement */
-        height: 125px; /* Maintain aspect ratio */
-        border: 2px solid #ddd; /* Adds a light gray border */
-        border-radius: 8px; /* Rounds the corners of the border */
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Adds a subtle shadow */
-    }
-    .modal-body img {
-        width: 100%; /* Ensures the image takes the full width of the column */
-        height: 200px;
-        margin-bottom: 15px; /* Set a fixed height */
-        object-fit: cover; /* Ensures the image covers the area without stretching */
+        position: absolute;
+        top: 40px;
+        right: 100px;
+        max-width: 125px;
+        height: 125px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
     .card {
-    border: 1px solid #f1f1f1; /* Light border around the card */
-    border-radius: 10px; /* Rounded corners */
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow */
-    background-color: #fff; /* White background */
+        border: 1px solid #f1f1f1;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        background-color: #fff;
     }
-
     .card-title {
-        font-size: 1.25rem; /* Adjust title size */
-        font-weight: bold; /* Bold title */
-        color: #333; /* Dark color for title */
+        font-size: 1.25rem;
+        font-weight: bold;
+        color: #333;
     }
-
     .list-group-item {
-        display: flex; /* Use flexbox to align items */
-        align-items: center; /* Center items vertically */
-        padding: 10px; /* Padding inside each item */
-        border-bottom: 1px solid #f1f1f1; /* Light border between items */
-        color: #666; /* Light gray text for items */
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        border-bottom: 1px solid #f1f1f1;
+        color: #666;
         font-size: 12px;
     }
-
     .listing-image {
-        width: 50px; /* Set a width for the image */
-        height: 50px; /* Set a height for the image */
-        margin-right: 10px; /* Space between image and text */
-        border-radius: 5px; /* Optional: rounded corners for the image */
+        width: 50px;
+        height: 50px;
+        margin-right: 10px;
+        border-radius: 5px;
     }
-
     .list-group-item:last-child {
-        border-bottom: none; /* Remove border for the last item */
+        border-bottom: none;
     }
-
     .card-body {
-        padding: 15px; /* Padding for card body */
+        padding: 15px;
     }
-
+    table td {
+        vertical-align: top;
+        text-align: left;
+    }
+    table td:first-child {
+        width: 200px;
+        font-weight: bold;
+        white-space: nowrap;
+    }
+    .ellipsis1 {
+        display: inline-block;
+        max-width: 50ch; /* Limits the width to 25 characters */
+        overflow-wrap: break-word; /* Allows breaking at character boundaries */
+        vertical-align: bottom;
+    }
 </style>
+
+<script>
+    function showImageModal(imageUrl) {
+        // Set the image source in the modal
+        document.getElementById('modalImage').src = imageUrl;
+        // Show the modal
+        var imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
+        imageModal.show();
+    }
+</script>
+
 <!-- Bootstrap CSS and JS -->
 <link href="https://stackpath.bootstrapcdn.com/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>

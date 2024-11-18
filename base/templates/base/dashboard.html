@@ -1,0 +1,270 @@
+{% extends "base/base.html" %}
+{% load static %}
+{% block content %}
+
+{% if request.user.is_authenticated %}
+<div class="content">
+    <div class="container-fluid1">
+        <!-- Top row of summary cards -->
+        {% if user.is_staff %}
+        <div class="row">
+            <div class="col-md-6">
+                <div class="slider">
+                    <!-- Horizontal Scrolling Profiles -->
+                    <div class="profile-slider">
+                        {% for profile in profiles %}
+                            <div class="profile-card">
+                                <img class="profile-img" src="{{ profile.user_prof_pic }}" alt="{{ profile.user_prof_fname }} {{ profile.user_prof_lname }}">
+                                <p style="font-size:12px;">{{ profile.user_prof_fname }} {{ profile.user_prof_lname }} 
+                                    <br><i class="fas fa-star" style="color: #ffcc00;"></i>{{ profile.calculated_avg }}
+                                </p>
+                            </div>
+                        {% endfor %}
+                    </div>  
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="revenue-box">
+                <p class="revenue-title" style="margin-top: 40px;">Revenue</p><br>    
+                <p class="revenue-amount">₱84,198</p>
+                </div>
+            </div>
+        </div>
+            {% endif %}
+
+            {% if user.is_reviewer %}
+        <div class="row">
+            <div class="col-md-3">
+                <div class="stat-card card red">
+                    <p>Pending Assumee</p>
+                    <p>{{pending_assumee_count}}</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card card orange">
+                    <p>Pending Assumptor</p>
+                    <p>{{pending_assumptor_count}}</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card card green">
+                    <p>Pending Listing</p>
+                    <p>{{pending_listings_count}}</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card card blue">
+                    <p>Total Pending Application</p>
+                    <p>{{total_pending}}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if user.is_staff or user.is_reviewer%}
+        <div class="row">
+            <!-- Smaller Left Container: Listing, Promote Listing, Suspended User, Report User -->
+            <div class="col-md-6">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="card custom-card">
+                            <h6 style="text-align:center;">Gender</h6>
+                            <canvas id="GenderChart"></canvas><br>
+                            <p></p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="card custom-card">
+                            <h6 style="text-align:center;">Most Promoted Listing</h6>
+                            <canvas id="promoteListing"></canvas>
+                            <p style="font-size:12px;">Category: {{ most_promoted_category }} ({{ category_count }}) - {{ approved_percentage }}%</p>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="card custom-card">
+                             <h6 style="text-align:center;">Report User</h6>
+                            <canvas id="reportUser"></canvas>
+                            <p style="text-align:center;">{{ report_user_percentage|floatformat:0 }}%</p>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="card custom-card">
+                            <h6 style="text-align:center;">Suspended User</h6>
+                            <canvas id="suspendedUser"></canvas>
+                            <p style="text-align:center;">{{ suspended_user_percentage|floatformat:0 }}%</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Larger Right Container: Revenue Donut Chart -->
+            <div class="col-md-6">
+                <div class="card custom-card">
+                    <h5>Listing Category</h5><br>
+                    <div class="chart-container">
+                        <canvas id="listingCategory"></canvas>
+                    </div>
+                    <p style="margin-top: 30px;  text-align:center;">Total Listing by Category: {{total_category}}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Include Chart.js library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // Circular charts for profit, visits, customers, and sales
+    function createCircularChart(ctx, color, percentage) {
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [percentage, 100 - percentage],
+                    backgroundColor: [color, '#e0e0e0'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                cutoutPercentage: 80,
+                tooltips: { enabled: false },
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        createCircularChart(
+            document.getElementById('promoteListing').getContext('2d'),
+            '#ef4444',
+            {{ approved_percentage }}
+        );
+    });
+    createCircularChart(document.getElementById('reportUser').getContext('2d'), '#f59e0b', {{ report_user_percentage }});
+    createCircularChart(document.getElementById('suspendedUser').getContext('2d'), '#10b981', {{ suspended_user_percentage }});
+
+    // Donut chart for users
+    new Chart(document.getElementById('GenderChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Male', 'Female'],
+            datasets: [{
+                data: [{{gender_count_M}}, {{gender_count_F}}],
+                backgroundColor: ['#87CEEB', '#FFC0CB'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            cutoutPercentage: 70,
+            legend: { display: false }
+        }
+    });
+
+     document.addEventListener('DOMContentLoaded', function () {
+        new Chart(document.getElementById('listingCategory').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Real Estate', 'Motorcycle', 'Car'],
+                datasets: [{
+                    data: [
+                        {{ real_estate_count }},
+                        {{ motorcycle_count }},
+                        {{ car_count }}
+                    ],
+                    backgroundColor: ['#3b82f6', '#ef4444', '#10b981'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                cutoutPercentage: 70,  // Keep the same cutout to maintain size
+                legend: { display: true }  // Hide legend if not needed
+            }
+        });
+    });
+</script>
+
+<style>
+    .stat-card {
+        text-align: center;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        color: white;
+        font-size: 14px;
+    }
+
+    .red { background-color: #e63946; }
+    .orange { background-color: #f4a261; }
+    .blue { background-color: #457b9d; }
+    .green { background-color: #2a9d8f; }
+
+    .profile-slider {
+        display: flex;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        gap: 10px;
+        padding-bottom: 10px;
+    }
+
+    .profile-card {
+        flex-shrink: 0;
+        text-align: center;
+        width: 150px;
+        padding: 10px;
+    }
+
+    .profile-img {
+        width: 100%;
+        height: 150px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .custom-card {
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        background-color: #fff;
+        margin-bottom: 10px;
+    }
+
+    .chart-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .container-fluid1 {
+        padding: 30px;
+    }
+    .revenue-box {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+
+    .revenue-title {
+        font-size: 18px;
+        color: #6c757d;
+        margin-bottom: 8px;
+    }
+
+    .revenue-amount {
+        font-size: 24px;
+        font-weight: bold;
+        color: #28a745;
+    }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+
+
+{% endblock content %}

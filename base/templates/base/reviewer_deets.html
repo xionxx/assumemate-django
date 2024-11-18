@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .info-table {
+            font-size: 15px;
+            width: 100%;
+            border-collapse: collapse; /* This removes the default spacing between cells */
+        }
+        .info-table td {
+            padding: 8px; /* Adjusts the spacing within cells */
+            vertical-align: top;
+        }
+        .label-cell {
+            font-weight: bold;
+            text-align: left;
+            width: 150px; /* Adjust the width as needed */
+        }
+    </style>
+</head>
+<body>
+    <h4><b>{{ reviewer.profile.user_prof_lname }}'s Information</b></h4><br>
+    <center>
+        <img src="{{ reviewer.profile.user_prof_pic }}" class="img img-responsive" style="width: 30%; height: 30%;">
+    </center>
+    <br>
+    <table class="info-table">
+        <tr>
+            <td class="label-cell">Reviewer ID:</td>
+            <td>{{ reviewer.id }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Email Address:</td>
+            <td>{{ reviewer.email }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Full Name:</td>
+            <td>{{ reviewer.profile.user_prof_fname }} {{ reviewer.profile.user_prof_lname }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Gender:</td>
+            <td>{{ reviewer.profile.user_prof_gender }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Date of Birth:</td>
+            <td>{{ reviewer.profile.user_prof_dob }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Mobile No.:</td>
+            <td>{{ reviewer.profile.user_prof_mobile }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Address:</td>
+            <td>{{ reviewer.profile.user_prof_address }}</td>
+        </tr>
+    </table>
+</body>
+</html>

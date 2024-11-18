@@ -1,54 +1,248 @@
 {% extends "base/base.html" %}
-{% load static %} 
+{% load static %}
 
 {% block content %}
 <link rel="stylesheet" href="{% static 'css/users.css' %}">
 <div class="container">
+    <h1>Platform Report</h1>
     <div class="row">
-        <div class="cardsBox">
-            <div class="assumemate">
-                <div class="cards border">
-                    <a href="/Assumemate/Assumptors" style="color: black;">
-                        <div class="numbers">1</div>
-                        <div class="cardnames">Assumptors</div>
-                    </a>
-                    <div class="iconbx">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
+        <div class="cardsContainer" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+            <div class="card border">
+                <a style="color: black;">
+                    <div class="numbers">{{ assumptors_count }}</div>
+                    <div class="cardnames">Assumptors</div>
+                </a>
+                <div class="iconbx">
+                    <i class="fa-solid fa-user"></i>
                 </div>
             </div>
-
-            <div class="assumemate">
-                <div class="cards border">
-                    <a href="/Assumemate/Assumees" style="color: black;">
-                        <div class="numbers">4</div>
-                        <div class="cardnames">Assumees</div>
-                    </a>
-                    <div class="iconbx">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
+        
+            <div class="card border">
+                <a style="color: black;">
+                    <div class="numbers">{{ assumees_count }}</div>
+                    <div class="cardnames">Assumees</div>
+                </a>
+                <div class="iconbx">
+                    <i class="fa-solid fa-user"></i>
                 </div>
             </div>
-
-            <div class="assumemate">
-                <div class="cards border">
-                    <a href="/Assumemate/Suspended" style="color: black;">
-                        <div class="numbers">5</div>
-                        <div class="cardnames">Total Users</div>
-                    </a>
-                    <div class="iconbx">
-                        <i class="fa-solid fa-users pe-2"></i>
-                    </div>
+        
+            <div class="card border">
+                <a style="color: black;">
+                    <div class="numbers">{{ total_users_count }}</div>
+                    <div class="cardnames">Total Users</div>
+                </a>
+                <div class="iconbx">
+                    <i class="fa-solid fa-users pe-2"></i>
                 </div>
-            </div> 
+            </div>
+        
+            <div class="card border">
+                <a style="color: black;">
+                    <div class="numbers">{{ active_accounts_count }}</div>
+                    <div class="cardnames">Active Accounts</div>
+                </a>
+                <div class="iconbx">
+                    <i class="fa-solid fa-user-check"></i>
+                </div>
+            </div>
+        
+            <div class="card border">
+                <a style="color: black;">
+                    <div class="numbers">{{ inactive_accounts_count }}</div>
+                    <div class="cardnames">Inactive Accounts</div>
+                </a>
+                <div class="iconbx">
+                    <i class="fa-solid fa-user-slash"></i>
+                </div>
+            </div>
+            <div class="card border">
+                <a style="color: black;">
+                    <div class="numbers">{{ promoted_listings_count }}</div>
+                    <div class="cardnames">Promoted Listings</div>
+                </a>
+                <div class="iconbx">
+                    <i class="fa-solid fa-bullhorn"></i>
+                </div>
+            </div>
         </div>
+        
+            
+            <div class="container" >
+                <h1>User Growth and User Type Comparison</h1>
+            <div class="chart-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                <div class="chart-container">
+                    <h3>User Growth Chart</h3>
+                    <canvas id="userGrowthChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Assumptors vs. Assumees Chart</h3>
+                    <canvas id="assumptorsVsAssumeesChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
     </div>
-</div>
-<!-- jQuery -->
+    <!-- Include the Chart.js script if not already included -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Data from Django context for User Growth
+        const months = {{ months|safe }};
+        const userCounts = {{ user_counts|safe }};
+        
+        // Create the User Growth chart
+        const ctx1 = document.getElementById('userGrowthChart').getContext('2d');
+        const userGrowthChart = new Chart(ctx1, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: 'No. of Users',
+                    data: userCounts,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                    fill: true,
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Users'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Months'
+                        }
+                    }
+                }
+            }
+        });
+    
+        // Data from Django context for Assumptors and Assumees
+        const assumptorsCounts = {{ assumptors_counts|safe }};
+        const assumeesCounts = {{ assumees_counts|safe }};
+    
+        // Create the Assumptors vs. Assumees chart
+        const ctx2 = document.getElementById('assumptorsVsAssumeesChart').getContext('2d');
+        const assumptorsVsAssumeesChart = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: [
+                    {
+                        label: 'Assumptors',
+                        data: assumptorsCounts,
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Assumees',
+                        data: assumeesCounts,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Users'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Months'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+
+    <!-- jQuery -->
 <script src='https://code.jquery.com/jquery-3.7.0.js'></script>
 <!-- Data Table JS -->
 <script src='https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js'></script>
 <script src='https://cdn.datatables.net/responsive/2.1.0/js/dataTables.responsive.min.js'></script>
 <script src='https://cdn.datatables.net/1.13.5/js/dataTables.bootstrap5.min.js'></script>
 <script src="{% static 'scripts/invv.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .cardsContainer {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px; /* Reduced gap between cards */
+        padding: 15px; /* Reduced padding around the container */
+    }
+
+    .card {
+        background-color: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px; /* Reduced padding inside each card */
+        text-align: center;
+        min-width: 150px; /* Reduced minimum width */
+        height: 120px; /* Reduced height */
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Reduced shadow depth */
+        transition: transform 0.3s;
+    }
+
+    .card:hover {
+        transform: scale(1.02); /* Slightly smaller scale on hover */
+    }
+
+    .numbers {
+        font-size: 1.5em; /* Reduced font size */
+        font-weight: bold;
+    }
+
+    .cardnames {
+        font-size: 0.9em; /* Reduced font size */
+        margin-top: 5px; /* Reduced margin */
+    }
+
+    .iconbx {
+        font-size: 1.2em; /* Reduced icon size */
+    }
+
+    .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px; /* Reduced gap between charts */
+        margin-top: 15px; /* Reduced space above the charts */
+    }
+
+    .chart-container {
+        background-color: #ffffff; /* Background color for charts */
+        border: 1px solid #ddd; /* Border for the chart containers */
+        border-radius: 8px; /* Rounded corners */
+        padding: 10px; /* Reduced padding inside each chart container */
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); /* Reduced shadow depth */
+    }
+
+    h3 {
+        text-align: center; /* Center the heading of each chart */
+        margin-bottom: 10px; /* Reduced space below the heading */
+        font-size: 1.1em; /* Adjusted font size */
+    }
+</style>
+
+
 {% endblock content %}

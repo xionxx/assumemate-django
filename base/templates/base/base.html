@@ -34,7 +34,7 @@
                 {% if request.user.is_authenticated %}
                     <div class="profile">
                             <img class="avatar" src="{{ request.user.profile.user_prof_pic }}"></br>
-                            <h3>{{user.first_name}} {{user.last_name}}</h3>
+                            <h3>{{user.first_name}}  {{user.last_name}}</h3>
                             {% if user.is_staff %}
                             <p>Administrator</p>
                             {%elif user.is_reviewer %}
@@ -43,14 +43,14 @@
                             <a href="/user/edit/profile" class="btn btn-outline-light btn-sm">Edit Profile</a>
                             </div>
                                 <li class="sidebar-item">
-                                    <a href="#" class="sidebar-link">
+                                    <a href="/dashboard" class="sidebar-link">
                                         <i class="fa-solid fa-house fa-sm pe-2"></i>
                                         Home
                                     </a>
                                 </li>
                                 {% if user.is_staff %}
                                 <li class="sidebar-item">
-                                    <a href="#" class="sidebar-link">
+                                    <a href="/assumemate/listing" class="sidebar-link">
                                         <i class="fa-solid fa-th-list fa-sm pe-2"></i>
                                         Listings
                                     </a>

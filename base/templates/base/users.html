@@ -29,18 +29,30 @@
                     </div>
                 </div>
             </div>
-
             <div class="assumemate">
                 <div class="cards border">
                     <a href="#" style="color: black;">
-                        <div class="numbers">{{ total_user }}</div>
-                        <div class="cardnames">Users</div>
+                        <div class="numbers">{{ isreviewer_count }}</div>
+                        <div class="cardnames">Reviewer</div>
                     </a>
                     <div class="iconbx">
                         <i class="fa-solid fa-user" style="color: #4A8AF0;"></i>
                     </div>
                 </div>
             </div>
+
+            <div class="assumemate">
+                <div class="cards border">
+                    <a href="#" style="color: black;">
+                        <div class="numbers">{{ isadmin_count }}</div>
+                        <div class="cardnames">Admin</div>
+                    </a>
+                    <div class="iconbx">
+                        <i class="fa-solid fa-user" style="color: #4A8AF0;"></i>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -69,7 +81,6 @@
                         <option selected value="all">---All---</option>
                         <option value="Assumptors">Assumptors</option>
                         <option value="Assumees">Assumees</option>
-                        <option value="Suspend">Suspend</option>
                     </select>
                 </div>
             </div>
@@ -89,35 +100,33 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for application in application %}
+                        {% for applications in application %}
                         <tr>
-                            <td class="text-center">{{ application.user_prof_id.user_prof_id }}</td>
-                            <td class="marquee">{{ application.user_prof_id.user_prof_fname }} {{ application.user_prof_id.user_prof_lname }}</td>
-                            <td class="marquee">{{ application.user_prof_id.user_id.email }}</td>
+                            <td class="text-center">{{ applications.user_id.id}}</td>
+                            <td class="marquee">{{ applications.user_id.profile.user_prof_fname }} {{ applications.user_id.profile.user_prof_lname }}</td>
+                            <td class="marquee">{{ applications.user_id.email }}</td>
                             <td class="text-center"> 
-                                {% if application.user_prof_id.user_id.is_assumptor %}
+                                {% if applications.user_id.is_assumptor %}
                                     Assumptor
-                                {% elif application.user_prof_id.user_id.is_assumee %}
+                                {% elif applications.user_id.is_assumee %}
                                     Assumee
                                 {% endif %}
                             </td>
-                            <td class="text-center">{{ application.user_app_status }}</td>
+                            <td class="text-center">{{ applications.user_app_status }}</td>
                             <td class="marquee">
-                                {% if application.user_app_reviewer_id %}
-                                    {% with reviewer=application.user_app_reviewer_id.userprofile %}
-                                        {{ reviewer.user_prof_fname }} {{ reviewer.user_prof_lname }}
-                                    {% endwith %}
+                                {% if applications.user_app_reviewer_id %}
+                                        {{ applications.user_app_reviewer_id.profile.user_prof_fname }} {{applications.user_app_reviewer_id.profile.user_prof_lname }}
                                 {% else %}
                                     Not Reviewed
                                 {% endif %}
                             </td>
                             <td class="text-center">
-                                <a href="{% url 'users_view_details' application.user_prof_id.user_prof_id %}" class="btn btn-info" data-user-id="{{ application.user_prof_id.user_prof_id }}">
+                                <a href="{% url 'users_view_details' applications.user_id.id %}" class="btn btn-info" data-user-id="{{ applications.user_id }}">
                                     <i class="fa-solid fa-eye"></i>
                                 </a>
                             </td>
                         </tr>
-                    {% endfor %}
+                        {% endfor %}
                 </tbody>
             </table>
         </div>

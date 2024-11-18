@@ -78,7 +78,7 @@
             </form>
         </div>
 
-        <div class="scrollable-container" style="max-height: 500px; overflow-y: auto; padding-right: 15px;">
+        <div class="scrollable-container" style="max-height: 500px; overflow-y: auto; overflow-x: hidden; padding-right: 15px;">
             <div class="row" style="margin-left: 40px; margin-bottom: 25px; margin-top: 10px;">
                 {% for listing in listings %}
                     <div class="col-md-3 listing-card" style="margin-bottom: 15px;">
@@ -98,7 +98,13 @@
                                 </div>
                                 <br>
                                 <div class="listing-name">
-                                    <label class="listing_name" style="font-weight: bold;">Title: {{ listing.list_content.title }}</label>
+                                    {%if listing.list_content.category == "Real Estate"%}
+                                        <label class="ellipsis" style="font-weight: bold;">{{ listing.list_content.title }}</label>
+
+                                    {%elif listing.list_content.category == "Car" or listing.list_content.category == "Motorcycle"%}
+                                        <label class="ellipsis" style="font-weight: bold;">{{ listing.list_content.make }} ({{ listing.list_content.model }} - {{ listing.list_content.transmission }})</label>
+
+                                    {% endif %}
                                 </div>
                                 <div class="listing-category" style="font-weight: bold;">
                                     <p class="listing-category">{{ listing.list_content.category }}</p>
@@ -110,6 +116,17 @@
             </div>
         </div>
     </div>
+
+    <style>
+        .ellipsis {
+    display: inline-block;
+    max-width: 18ch; /* Restrict to 15 characters */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+}
+    </style>
 
     <!-- jQuery -->
     <script src='https://code.jquery.com/jquery-3.7.0.js'></script>
