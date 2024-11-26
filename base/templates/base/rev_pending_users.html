@@ -63,9 +63,9 @@
 
                 {% for assumee in pending_assumees %}
                     <tr data-category="Assumees">
-                        <td class="marquee">{{ assumee.user_id.userprofile.user_prof_fname }}</td>
-                        <td class="marquee">{{ assumee.user_id.userprofile.user_prof_lname }}</td>
-                        <td class="marquee">{{ assumee.user_id.userprofile.user_id.email }}</td>
+                        <td class="marquee">{{ assumee.user_id.profile.user_prof_fname }}</td>
+                        <td class="marquee">{{ assumee.user_id.profile.user_prof_lname }}</td>
+                        <td class="marquee">{{ assumee.user_id.profile.user_id.email }}</td>
                         <td style="text-align: center;">{{ assumee.user_app_status }}</td>
                         <td style="text-align: center;">
                             <a type="button" class="btn btn-sm btn-info" href="{% url 'user_detail_view' assumee.user_id.pk %}">

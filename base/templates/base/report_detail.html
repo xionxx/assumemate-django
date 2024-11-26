@@ -9,13 +9,26 @@
     <div class="card">
         <div class="card-body">
             <h5 class="card-title">Report ID: {{ userreport.report_id }}</h5>
-            <p class="card-text"><strong>Reviewer:</strong> {{ userreport.reviewer.email }}</p>
+            <!-- <p class="card-text"><strong>Reviewer:</strong> {{ userreport.reviewer.email }}</p> -->
         
             <!-- Display JSON data -->
             <p class="card-text"><strong>Details:</strong></p>
             <ul>
-                <li><strong>User ID:</strong> {{ userreport.report_details.user_id }}</li>
-                <li><strong>Reported User ID:</strong> {{ userreport.report_details.reported_user_id }}</li>
+                <li><strong>Reporter Name:</strong> 
+                    {% if user_profile %}
+                        {{ user_profile.user_prof_fname }} {{ user_profile.user_prof_lname }}
+                    {% else %}
+                        Profile not found
+                    {% endif %}
+                </li>
+
+                <li><strong>Reported User Name:</strong>
+                    {% if reported_user_profile %}
+                        {{ reported_user_profile.user_prof_fname }} {{ reported_user_profile.user_prof_lname }}
+                    {% else %}
+                        Profile not found
+                    {% endif %}
+                </li>
                 <li><strong>Images:</strong>
                     <ul style="list-style-type: none; padding: 0; display: flex; flex-wrap: wrap; justify-content: center;">
                         {% for image in userreport.report_details.images %}
@@ -27,11 +40,17 @@
                         {% endfor %}
                     </ul>
                 </li>
-                <li><strong>Reason:</strong> {{ userreport.report_details.reason }}</li>
+                <li><strong>Reason:</strong> {{ userreport.report_details.describe }}</li>
+                <li><strong>Issues Type:</strong>
+                    <ul>
+                        {% for issue in userreport.report_details.issue_types %}
+                            <li>{{ issue }}</li>
+                        {% endfor %}
+                    </ul>
+                </li>
             </ul>
         
             <p class="card-text"><strong>Status:</strong> {{ userreport.report_status }}</p>
-            <p class="card-text"><strong>Reason:</strong> {{ userreport.report_reason|default:"N/A" }}</p>
         </div>
          <!-- Display "N/A" if no reason -->
 
@@ -50,17 +69,59 @@
                         <i class="fa-solid fa-circle-xmark"></i> Reject
                     </button>
             
-                    <!-- Reject Reason Modal -->
+                   <!-- Reject Reason Modal -->
                     <div class="modal fade" id="rejectModal-{{ userreport.report_id }}" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
                         <div class="modal-dialog">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title" id="rejectModalLabel">Reason for Rejection</h5>
+                                    <h5 class="modal-title" id="rejectModalLabel">Reason for Report Rejection</h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <textarea id="rejectionReason" class="form-control" rows="4" placeholder="Enter reason for rejection..." required></textarea>
-                                    <input type="hidden" name="report_reason" id="hiddenUserReason">  <!-- Hidden input for rejection reason -->
+                                    <p>Select one or more reasons for rejecting this report:</p>
+                                    <form id="rejectionForm">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" value="Insufficient evidence provided" id="reason1">
+                                            <label class="form-check-label" for="reason1">
+                                                Insufficient evidence provided
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" value="Report lacks clarity or details" id="reason2">
+                                            <label class="form-check-label" for="reason2">
+                                                Report lacks clarity or details
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" value="Duplicate report already processed" id="reason3">
+                                            <label class="form-check-label" for="reason3">
+                                                Duplicate report already processed
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" value="Issue does not violate policies" id="reason4">
+                                            <label class="form-check-label" for="reason4">
+                                                Issue does not violate policies
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" value="False or malicious report" id="reason5">
+                                            <label class="form-check-label" for="reason5">
+                                                False or malicious report
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" value="Other" id="reason6">
+                                            <label class="form-check-label" for="reason6">
+                                                Other
+                                            </label>
+                                        </div>
+                                        <!-- Text field for "Other" -->
+                                        <textarea id="otherReason" class="form-control mt-3 d-none" rows="2" placeholder="Provide additional details..."></textarea>
+                                        <!-- Hidden fields -->
+                                        <input type="hidden" name="report_reason" id="hiddenUserReason"> <!-- JSON for reasons -->
+                                        <input type="hidden" name="other_reason" id="hiddenOtherReason"> <!-- Text for "Other" -->
+                                    </form>
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -69,6 +130,9 @@
                             </div>
                         </div>
                     </div>
+
+
+
                 </form> 
             
                 <!-- Back Button -->
@@ -78,12 +142,43 @@
             </div>
             
             <script>
-                // Handle the confirm reject button
-                document.getElementById('confirmReject').addEventListener('click', function() {
-                    const reason = document.getElementById('rejectionReason').value;
-                    document.getElementById('hiddenUserReason').value = reason; // Set the hidden input value
-                    document.getElementById('rejectForm').submit(); // Submit the form
+                       // Show/Hide "Other" text field
+                document.getElementById('reason6').addEventListener('change', function () {
+                    const otherReasonField = document.getElementById('otherReason');
+                    if (this.checked) {
+                        otherReasonField.classList.remove('d-none');
+                        otherReasonField.setAttribute('required', 'true');
+                    } else {
+                        otherReasonField.classList.add('d-none');
+                        otherReasonField.removeAttribute('required');
+                        otherReasonField.value = ''; // Clear the field
+                    }
                 });
+
+                // Handle confirm reject button
+                document.getElementById('confirmReject').addEventListener('click', function () {
+                    const selectedReasons = [];
+                    document.querySelectorAll('.form-check-input:checked').forEach((checkbox) => {
+                        if (checkbox.value !== 'Other') {
+                            selectedReasons.push(checkbox.value); // Add predefined reasons
+                        }
+                    });
+
+                    const otherReason = document.getElementById('otherReason').value.trim();
+                    if (document.getElementById('reason6').checked && !otherReason) {
+                        alert("Please provide details for 'Other'.");
+                        return;
+                    }
+
+                    // Store reasons in hidden fields
+                    document.getElementById('hiddenUserReason').value = JSON.stringify(selectedReasons); // Predefined reasons
+                    document.getElementById('hiddenOtherReason').value = otherReason; // "Other" reason
+
+                    // Submit the form
+                    document.getElementById('rejectForm').submit();
+                });
+
+
             </script>
             
 {% endblock content %}

@@ -37,6 +37,10 @@ ALLOWED_HOSTS = ['*']
 AUTH_USER_MODEL = 'base.UserAccount'
 CORS_ALLOW_ALL_ORIGINS = True 
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+CSRF_TRUSTED_ORIGINS = [
+    'https://assumemate.topecnz.net',
+]
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

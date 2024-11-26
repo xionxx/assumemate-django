@@ -9,9 +9,6 @@ from django.dispatch import receiver
 from base.utils import send_push_notification
 
 class CustomUserManager(BaseUserManager):
-    def get_queryset(self):
-        return super().get_queryset().filter(is_active=True)
-    
     def create_user(self, email, password=None, google_id=None):
         """
         Create and return a regular user with an email and password.
@@ -92,18 +89,33 @@ class UserVerification(models.Model):
         db_table = 'user_verification'
 
 class UserApplication(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+
     user_id = models.OneToOneField(UserAccount, null=False, on_delete=models.CASCADE, db_column='user_id', related_name='user_application', primary_key=True, editable=False)
-    user_app_status = models.CharField(max_length=10, default='PENDING')
+    user_app_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
     user_app_approved_at = models.DateTimeField(blank=True, null=True)
     user_app_reviewer_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, blank=True, null=True, db_column='user_app_reviewer_id')
-
+    user_app_declined_at = models.DateTimeField(default=timezone.now)
+    user_reason = models.CharField(max_length=255, null=True)
     class Meta:
         db_table = 'user_application'
 
 class Listing(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('ACTIVE', 'Active'),
+        ('RESERVED', 'Reserved'),
+        ('SOLD', 'Sold'),
+        ('ARCHIVED', 'Archived'),
+    ]
+
     list_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     list_content = models.JSONField(null=True, blank=True)
-    list_status = models.CharField(max_length=20, default="PENDING")
+    list_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     list_duration = models.DateTimeField(null=True, blank=True) 
     user_id = models.ForeignKey(UserAccount, null=True, blank=True, on_delete=models.PROTECT, db_column='user_id', related_name='listing')
 
@@ -114,33 +126,120 @@ class Listing(models.Model):
         db_table = 'listing'
 
 class Report(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+
     report_id = models.AutoField(primary_key=True)
     report_details = models.JSONField(null=True)
     reviewer = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='reviewed_reports', db_column='user_id', null=True)
     updated_at = models.DateTimeField(default=timezone.now)
-    report_status =  models.CharField(max_length=20, default='PENDING')  # E.g., Approved, Pending, Declined
-    report_reason = models.CharField(max_length=255, null=True)
+    report_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')  # Approved, Pending, Declined
+    report_reason = models.JSONField(null=True)
+
+    def save(self, *args, **kwargs):
+        # Check if the status is being updated
+        if self.pk:
+            old_status = Report.objects.filter(pk=self.pk).values_list('report_status', flat=True).first()
+            if old_status != self.report_status:  # Status changed
+                self.handle_notifications()
+
+        super().save(*args, **kwargs)
+
+    def handle_notifications(self):
+        """Handles notifications and sends FCM push notifications based on the report status."""
+        reported_user_id = self.report_details.get('reported_user_id')
+        reporter_id = self.report_details.get('reporter_id')
+
+        # Ensure IDs are available
+        if not reported_user_id or not reporter_id:
+            return
+
+        # Fetch user accounts
+        reported_user = UserAccount.objects.filter(id=reported_user_id).first()
+        reporter_user = UserAccount.objects.filter(id=reporter_id).first()
+
+        if self.report_status == 'APPROVED':
+            # Notify the reported user
+            if reported_user:
+                Notification.objects.create(
+                    notif_message='Warning: You have been reported by a user.',
+                    recipient=reported_user,
+                    triggered_by=reporter_user,  # Reporter is the trigger
+                    notification_type="Report",
+                )
+                # Send FCM notification to the reported user
+                fcm_token = reported_user.fcm_token
+                if fcm_token:
+                    send_push_notification(
+                        fcm_token=fcm_token,
+                        title="Warning",
+                        body="You have been reported by a user.",
+                        data_payload={"route": "reports/sent/"},
+                    )
+
+            # Notify the reporter
+            if reporter_user:
+                Notification.objects.create(
+                    notif_message='Your report has been accepted.',
+                    recipient=reporter_user,
+                    triggered_by=reporter_user,  # Self-triggered
+                    notification_type="Report",
+                )
+                # Send FCM notification to the reporter
+                fcm_token = reporter_user.fcm_token
+                if fcm_token:
+                    send_push_notification(
+                        fcm_token=fcm_token,
+                        title="Report Accepted",
+                        body="Your report has been accepted.",
+                        data_payload={"route": "reports/sent/"},
+                    )
+
+        elif self.report_status == 'REJECTED':
+            # Notify the reporter
+            if reporter_user:
+                Notification.objects.create(
+                    notif_message='Your report has been rejected.',
+                    recipient=reporter_user,
+                    triggered_by=reporter_user,  # Self-triggered
+                    notification_type="Report",
+                )
+                # Send FCM notification to the reporter
+                fcm_token = reporter_user.fcm_token
+                if fcm_token:
+                    send_push_notification(
+                        fcm_token=fcm_token,
+                        title="Report Rejected",
+                        body="Your report has been rejected.",
+                        data_payload={"route": "reports/sent/"},
+                    )
 
     def check_suspension(self):
+        """Check if a user should be suspended based on approved reports."""
         reported_user_id = self.report_details.get('reported_user_id')
-        reporter_id = self.report_details.get('user_id')
+        reporter_id = self.report_details.get('reporter_id')
         if not reported_user_id:
             return
         approved_reports = Report.objects.filter(
             report_details__reported_user_id=reported_user_id,
             report_status='APPROVED'
-        ).exclude(report_details__user_id=reporter_id).count()
+        ).exclude(report_details__reporter_id=reporter_id).count()
 
         if approved_reports >= 3: 
             if not SuspendedUser.objects.filter(user_id=reported_user_id).exists():
                 suspension = SuspendedUser.objects.create(
                     user_id_id=reported_user_id,  
                     sus_start=timezone.now(),
-                    sus_end=timezone.now() + timedelta(days=30)  # Customize suspension duration
+                    sus_end=timezone.now() + timedelta(days=30)
                 )
                 suspension.save()
+
     class Meta:
         db_table = 'report'
+
 
 @receiver(post_save, sender=Report)
 def trigger_suspension(sender, instance, **kwargs):
@@ -157,8 +256,14 @@ class SuspendedUser(models.Model):
         return f"User {self.user_id} is suspended from {self.sus_start} to {self.sus_end}"
 
 class ListingApplication(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+
     list_app_id = models.AutoField(primary_key=True) 
-    list_app_status = models.CharField(max_length=20,default ='PENDING') 
+    list_app_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default ='PENDING') 
     list_app_date = models.DateTimeField(default=timezone.now)  
     list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id')  
     list_app_reviewer_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, blank=True, null=True, db_column='user_app_reviewer_id', related_name='listing_reviews')  # Add relate
@@ -208,9 +313,16 @@ class PromoteListing(models.Model):
         db_table = 'promote_listing'
 
 class Offer(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('ACCEPTED', 'Accepted'),
+        ('REJECTED', 'Rejected'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+
     offer_id = models.BigAutoField(primary_key=True, editable=False)
     offer_price = models.DecimalField(max_digits=12, decimal_places=2, null=True)
-    offer_status = models.CharField(max_length=15, default='PENDING')
+    offer_status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING')
     offer_created_at = models.DateTimeField(auto_now_add=True, null=True)
     offer_updated_at = models.DateTimeField(auto_now=True, null=True)
     list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, null=True, db_column='list_id', related_name='offer')
@@ -302,7 +414,6 @@ class Offer(models.Model):
     def update_offer_status(self, new_status):
         try:
             offer_status_message = f"Your offer of {self.offer_price} for the listing has been {new_status.lower()}."
-
             Notification.objects.create(
                 notif_message=offer_status_message,
                 recipient=self.user_id,
@@ -311,33 +422,43 @@ class Offer(models.Model):
                 notification_type='offer_status',
             )
 
-            fcm_token = self.user_id.fcm_token
+            if new_status == "CANCELLED":
+                fcm_token = self.list_id.user_id.fcm_token  
+                if fcm_token:
+                    user_profile = self.user_id.profile 
+
+                    offer_message = (
+                    f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
+                    f"has {new_status.lower()} his offer ₱ {self.offer_price} for the listing."
+                )
+            else:
+                fcm_token = self.user_id.fcm_token 
+                if fcm_token:
+                    user_profile = self.list_id.user_id.profile 
+
+                    offer_message = (
+                    f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
+                    f"has {new_status.lower()} your offer ₱ {self.offer_price} for the listing."
+                )
             if fcm_token:
-
-                user_profile = self.list_id.user_id.profile  # This will access the related UserProfile object
-
-                offer_message = f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} has {new_status.lower()} your offer ₱ {self.offer_price} for the listing"
-                route = f"ws/chat/{user_profile.user_id.id}/$"  
+                route = f"ws/chat/{user_profile.user_id.id}/$"
                 print(f"Debug: Sending follow push notification with route: {route}")
 
+                data_payload = {
+                    "route": route,
+                    "userId": str(user_profile.user_id.id),
+                }
 
-                data_payload={
-                        "route": route,  
-                        "userId": str(user_profile.user_id.id)  
-                    }
-                
                 send_push_notification(
                     fcm_token=fcm_token,
                     title="New Offer",
                     body=offer_message,
-                    data_payload=data_payload
-                    
+                    data_payload=data_payload,
                 )
-            print(f"Offer status notification sent: {offer_status_message}")
 
+            print(f"Offer status notification sent: {offer_status_message}")
         except Exception as e:
-            print(f"Error updating offer status notification: {e}")
-            raise
+            print(f"Error updating offer status: {e}")
 
 class ChatRoom(models.Model):
     chatroom_id = models.BigAutoField(primary_key=True, editable=False,)
@@ -369,8 +490,8 @@ class ChatMessage(models.Model):
         return f'Message from {self.sender_id} to room {self.chatroom_id} at {self.chatmess_created_at}'
 
 class Follow(models.Model):
-    follower_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='following_assumptors', db_column='assumee_user_id', limit_choices_to={'is_assumee': True})
-    following_id = models.ForeignKey(UserAccount,on_delete=models.CASCADE,related_name='followers_assumees',db_column='assumptor_user_id',limit_choices_to={'is_assumptor': True})
+    follower_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='following', db_column='follower_id')
+    following_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='follower',db_column='following_id')
 
     class Meta:
 

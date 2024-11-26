@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 import os
 from dotenv import load_dotenv
 import random, string, cloudinary, base64
@@ -205,7 +206,7 @@ def user_login(request):
         print(user)
         if user is not None:
             login(request, user)
-            return redirect('dashboard')
+            return JsonResponse({'redirect': '/dashboard/'})
         else:
             print("Authentication failed")
             return JsonResponse({'auth_failed': 'Incorrect email or password'})
@@ -802,22 +803,21 @@ def listing_detail_view(request, list_app_id):
 def accept_listing(request, list_app_id):
     if request.method == 'POST':
         listing_application = get_object_or_404(ListingApplication, list_app_id=list_app_id)
-        listing_application.list_app_status = 'ACCEPTED'
+        listing_application.list_app_status = 'APPROVED'
         listing_application.list_reason = request.POST.get('list_reason', '')  
         listing_application.list_app_reviewer_id = request.user
 
         listing = listing_application.list_id
-        assumee_user = listing.user_id
-
+        assumptor_user = listing.user_id
         current_date = timezone.now()
         current_year = current_date.year
         current_month = current_date.month
 
         existing_listings = ListingApplication.objects.filter(
-            list_id__user_id=assumee_user,
+            list_id__user_id=assumptor_user,
             list_app_date__year=current_year,
             list_app_date__month=current_month,
-            list_app_status='ACCEPTED'
+            list_app_status='APPROVED'
         ).exclude(list_app_id=list_app_id)
 
         if not existing_listings.exists():
@@ -828,12 +828,29 @@ def accept_listing(request, list_app_id):
         listing_application.save()
         listing.save()
 
+        user_account = listing.user_id
+        fcm_token = user_account.fcm_token  
+
+        if fcm_token:
+            title = 'Listing Application Accepted'
+            message = 'Your Listing Application has been accepted.'
+            
+            listing_images = listing.list_content.get('images', [])
+            first_image_url = listing_images[0] if listing_images else None
+
+            data_payload = {
+                "route": "/listings/details/",
+                "listingId": str(listing.list_id),  
+                "userId": str(assumptor_user.id)      
+            }
+            send_push_notification(fcm_token, title, message, image_url=first_image_url, data_payload=data_payload)
+
+        # Display success message and redirect
         messages.success(request, 'Listing application has been accepted.')
         return redirect('assumemate_rev_pending_list')
 
     messages.error(request, 'Invalid request method.')
     return redirect('some_error_view')
-
 
 
 @login_required
@@ -845,52 +862,54 @@ def reject_listing(request, list_app_id):
         listing_application.list_reason = request.POST.get('list_reason', '')  
         listing_application.save()
 
-    # listing_images = listing_application.list_id.list_content.get('images', [])
-    # user_account = listing_application.list_id.user_id
-    # fcm_token = user_account.fcm_token  
+        listing = listing_application.list_id
+        user_account = listing.user_id
+        fcm_token = user_account.fcm_token  
 
-    # if listing_images:
-    #     first_image_url = listing_images[0]  
-    # else:
-    #     first_image_url = None  
+        if fcm_token:
+            title = 'Listing Application rejected'
+            message = f'Your Listing Application has been rejected.'
+            
+            listing_images = listing.list_content.get('images', [])
+            first_image_url = listing_images[0] if listing_images else None
 
-    # if fcm_token:
-    #     title = 'Listing Application Rejected'
-    #     message = 'Your Listing Application has been rejected.'
-    #     send_push_notification(fcm_token, title, message)
+            data_payload = {
+                "route": "/listings/details/",
+                "listingId": str(listing.list_id),  
+                "userId": str(user_account.id)      
+            }
+
+            send_push_notification(fcm_token, title, message, image_url=first_image_url, data_payload=data_payload)
         
     messages.success(request, 'Listing application has been rejected.')
-    return redirect('assumemate_rev_pending_list')  
+    return redirect('assumemate_rev_pending_list')
 
 @login_required
 def accept_user(request, user_id):
-    # Fetch the user application object based on the user_id
     user_application = get_object_or_404(UserApplication, user_id=user_id)
-    
-    # Update the user application status to 'ACCEPTED'
-    user_application.user_app_status = 'ACCEPTED'
+    user_application.user_app_status = 'APPROVED'
     user_application.user_app_approved_at = timezone.now()
-    user_application.user_app_reviewer_id = request.user  # Assuming the request user is the reviewer
-    user_application.save()
+    user_application.user_app_reviewer_id = request.user  
 
-    # Fetch the user account associated with the user_application
+    user_application.save()
     user_account = user_application.user_id
     user_account.is_active = True
     user_account.save()
 
-    # Get the FCM token from the UserAccount model
-    # fcm_token = user_account.fcm_token  # Make sure the FCM token field exists in UserAccount
+   
+    fcm_token = user_account.fcm_token 
 
-    # if fcm_token:
-    #     # Send a notification to the user about the acceptance of their application
-    #     title = 'Application Accepted'
-    #     message = 'Your user application has been accepted.'
-    #     send_push_notification(fcm_token, title, message)
+    if fcm_token:
+
+        title = 'Application Approved'
+        message = 'Your user application has been approved.'
+        data_payload = {  
+                'application_status': 'APPROVED',  
+            }
+        send_push_notification(fcm_token, title, message, data_payload=data_payload)
     
-    # Display success message to the admin
-    messages.success(request, 'User application has been accepted.')
 
-    # Redirect to the pending accounts view
+    messages.success(request, 'User application has been approved.')
     return redirect('pending_accounts_view')
 
 @login_required
@@ -904,13 +923,15 @@ def reject_user(request, user_id):
         user_application.save()
 
     user_account = user_application.user_id
-    fcm_token = user_account.fcm_token  # Make sure the FCM token field exists in UserAccount
-
+    fcm_token = user_account.fcm_token  
     if fcm_token:
-        # Send a notification to the user about the acceptance of their application
+
         title = 'Application Rejected'
         message = 'Your user application has been rejected.'
-        send_push_notification(fcm_token, title, message)
+        data_payload = {  
+                'application_status': 'REJECTED',  
+            }
+        send_push_notification(fcm_token, title, message, data_payload)
 
         messages.success(request, 'User application has been rejected.')
         return redirect('pending_accounts_view')
@@ -932,17 +953,36 @@ def accept_report(request, report_id):
 def reject_report(request, report_id):
     if request.method == 'POST':
         report = get_object_or_404(Report, report_id=report_id)
+
+        # Parse predefined reasons from JSON
+        predefined_reasons = request.POST.get('report_reason', '[]')
+        try:
+            reasons = json.loads(predefined_reasons)
+        except json.JSONDecodeError:
+            reasons = []
+
+        # Get the "Other" reason
+        other_reason = request.POST.get('other_reason', '').strip()
+
+        # Combine into a structured JSON
+        report_reasons = {
+            "predefined": reasons,
+            "other": other_reason if other_reason else None
+        }
+
+        # Update the report object
         report.report_status = 'REJECTED'
-        report.updated_at = timezone.now() 
-        report.reviewer = request.user # toy mao rani ibutang para sa katung reviewer i edit lang iif unsay fieldname nimo sa reviewer
-        report.report_reason = request.POST.get('report_reason', '')  
+        report.updated_at = timezone.now()
+        report.reviewer = request.user
+        report.report_reason = report_reasons  # Save reasons as JSON
         report.save()
-        
+
         messages.success(request, 'Report has been rejected.')
-        return redirect('assumemate_rev_report_users')  
+        return redirect('assumemate_rev_report_users')
 
     messages.error(request, 'Invalid request method.')
-    return redirect('some_error_view') 
+    return redirect('some_error_view')
+
 
 
  #JOSELITO
@@ -954,10 +994,10 @@ def dashboard(request):
         average_rating=Avg('user_id__ratings_received__rating_value')  # Calculate the average rating
     ).filter(average_rating__gte=4.5, average_rating__lte=5.0)  # Filter out users with ratings below 4.5 or above 5.0
 
-    # Manually calculate the average rating for each profile
+    # Manually calculate and round the average rating for each profile
     for profile in profiles:
         ratings = [rating.rating_value for rating in profile.user_id.ratings_received.all()]
-        profile.calculated_avg = sum(ratings) / len(ratings) if ratings else 0
+        profile.calculated_avg = round(sum(ratings) / len(ratings) if ratings else 0, 1)
 
     # Count of pending Assumptor applications
     pending_assumee_count = UserApplication.objects.filter(user_app_status="PENDING",user_id__is_assumee=True).count()
@@ -974,7 +1014,7 @@ def dashboard(request):
     #most promoted listing
      # Filter promoted listings that have been approved
     approved_promoted_listings = PromoteListing.objects.filter(
-        list_id__list_status="APPROVED"
+        list_id__list_status="ACTIVE"
     ).select_related('list_id')
 
     # Count listings in each category to find the most promoted
@@ -984,7 +1024,7 @@ def dashboard(request):
 
     # Calculate percentage of approved promoted listings
     total_promoted_count = PromoteListing.objects.count()
-    approved_percentage = (approved_promoted_listings.count() / total_promoted_count) * 100 if total_promoted_count > 0 else 0
+    approved_percentage = round((approved_promoted_listings.count() / total_promoted_count) * 100) if total_promoted_count > 0 else 0
 
     gender_count_M = UserProfile.objects.filter(user_prof_gender = "Male").count()
     gender_count_F = UserProfile.objects.filter(user_prof_gender = "Female").count()

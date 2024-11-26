@@ -11,6 +11,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.conf import settings
+from django.contrib.auth.hashers import check_password
 from google.auth.transport import requests
 from google.oauth2 import id_token as token_auth
 from rest_framework import serializers
@@ -79,8 +80,10 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             email_verified_user.user_id = user_obj
             email_verified_user.save()
 
-        if user_obj.is_assumptor:
-            Wallet.objects.create(user_id=user_obj)
+        # if user_obj.is_assumptor:
+        #     Wallet.objects.create(user_id=user_obj)
+
+        Wallet.objects.create(user_id=user_obj)
 
         return user_obj
     
@@ -259,10 +262,17 @@ class UserLoginSerializer(serializers.Serializer):
         if not user.has_usable_password():
             raise serializers.ValidationError({'error': 'Your account is connected to Google: Use the Google button to login'})
         
+        if not check_password(validated_data['password'], user.password):
+                raise serializers.ValidationError({'error': 'Incorrect email or password'})
+        
+        if not user.is_active:
+            user.is_active = True
+            user.save()
+        
         authenticated_user = authenticate(username=validated_data['email'], password=validated_data['password'])
 
         if not authenticated_user:
-            raise serializers.ValidationError({'error': 'Incorrect email or password'})
+            raise serializers.ValidationError({'error': 'Incorrect email or password hehe'})
 
         return authenticated_user
                
@@ -362,6 +372,10 @@ class UserGoogleLoginSerializer(serializers.Serializer):
             email = id_info['email']
 
             user = UserModel.objects.filter(Q(google_id=google_id) & Q(email = email)).first()
+
+            if not user.is_active:
+                user.is_active = True
+                user.save()
 
             if not user:
                 raise serializers.ValidationError({'error': 'No user associated with the google found'})
@@ -509,7 +523,20 @@ class ReportSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         return super().create(validated_data)
 
+class PromoteListingDetailSerializer(serializers.ModelSerializer):
+    list_id = ListingSerializer()  # Nested Listing details
+    user_profile = serializers.SerializerMethodField()
 
+    class Meta:
+        model = PromoteListing
+        fields = '__all__'
+
+    def get_user_profile(self, obj):
+        user = obj.list_id.user_id  # Access user_id from Listing
+        user_profile = UserProfile.objects.filter(user_id=user).first()
+        if user_profile:
+            return UserProfileSerializer(user_profile).data
+        return None
 
 
 
@@ -554,11 +581,13 @@ class NotificationSerializer(serializers.ModelSerializer):
     
 #jericho's serializers.py
 class RatingSerializer(serializers.ModelSerializer):
+    from_user_id = UserProfileSerializer(source='from_user_id.profile', read_only=True)  # Correctly reference profile
     rating_value = serializers.FloatField()
 
     class Meta:
         model = Rating
         fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment']
+
 
 ###############################
 ###############################
@@ -569,3 +598,10 @@ class OfferSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
         
+class ViewReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = ['report_id', 'report_reason', 'report_status', 'updated_at', 'details']
+        extra_kwargs = {
+            'details': {'source': 'report_details'}
+        }

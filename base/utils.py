@@ -5,7 +5,7 @@ from firebase_admin import credentials, messaging
 from django.conf import settings
 
 
-cred_path = os.path.join(settings.BASE_DIR, "static_files\json\messagetrial1-firebase-adminsdk-omyr6-845be3ae18.json")
+cred_path = os.path.join(settings.BASE_DIR, "static_files/json/messagetrial1-firebase-adminsdk-omyr6-f7abee8b1d.json")
 
 
 try:

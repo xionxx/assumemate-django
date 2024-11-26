@@ -53,31 +53,30 @@ class UserRegister(APIView):
         if serializer.is_valid(raise_exception=True):
             user = serializer.save()
             
-            refresh_token = RefreshToken.for_user(user)
-            access_token = str(refresh_token.access_token)
+            if not user.is_active:
+                user.is_active = True
+                user.save()
             
-            return Response({'access': access_token, 'refresh': str(refresh_token), 'user': UserRegisterSerializer(user).data}, status=status.HTTP_201_CREATED)
+            
+            return Response({'user': UserRegisterSerializer(user).data}, status=status.HTTP_201_CREATED)
         return Response({'error': serializer.error}, status=status.HTTP_400_BAD_REQUEST)
 
 class UserCreateProfile(APIView):
     permission_classes = [permissions.AllowAny]
     def post(self, request):
         data = request.data
-        user = UserModel.objects.get(id=data['user_id'])
+        print(data)
         serializer = UserProfileSerializer(data=data)
         user_valid_id = request.data.get('user_prof_valid_id')
         user_picture = request.data.get('user_prof_pic')
 
         if serializer.is_valid(raise_exception=True):
+            user = UserModel.objects.get(id=data['user_id'])
             user_profile = serializer.save(user_id=user)
 
             UserApplication.objects.create(user_id=user)
 
             user = user_profile.user_id
-
-            if not user.is_active:
-                user.is_active = True
-                user.save()
 
             if not user_valid_id or not user_picture:
                 return Response({'error': 'No valid ID or picture provided'}, status=status.HTTP_400_BAD_REQUEST)
@@ -109,8 +108,12 @@ class UserCreateProfile(APIView):
             except Exception as e:
                 return JsonResponse({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             
+            
+            refresh_token = RefreshToken.for_user(user)
+            access_token = str(refresh_token.access_token)
+            
             reserializer = UserProfileSerializer(user_profile)
-            return Response({'user_profile': reserializer.data}, status=status.HTTP_201_CREATED)
+            return Response({'access': access_token, 'refresh': str(refresh_token), 'user_profile': reserializer.data}, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -407,6 +410,7 @@ class ViewOtherProfile(APIView):
 
     def get(self, request, user_id):
         try:
+            user = UserModel.objects.get(id=user_id)
             user_profile = UserProfile.objects.get(user_id=user_id)
             user_status = UserApplication.objects.get(user_id=user_id)
             prof_serializer = UserProfileSerializer(user_profile)
@@ -430,9 +434,9 @@ class ViewOtherProfile(APIView):
 
             print(average_rating)
 
-            
+            print(user.is_active)
 
-            return Response({'user_profile': profile_data, 'average_rating': average_rating}, status=status.HTTP_200_OK)
+            return Response({'user_profile': profile_data, 'average_rating': average_rating, 'isActive': user.is_active}, status=status.HTTP_200_OK)
         except UserApplication.DoesNotExist:
             return Response({'error': 'User application status not found.'}, status=status.HTTP_404_NOT_FOUND)
         except UserProfile.DoesNotExist:
@@ -561,47 +565,33 @@ class MakeOfferAPIView(APIView):
             print(str(e))
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class UpdateOfferAPIView(APIView):
+class CancelOfferAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
     def put(self, request):
         offer_id = request.data.get('offer_id')
-        offer_amnt = request.data.get('offer_amnt')
+        offer_status = request.data.get('status')
 
-        user = request.user
+        print(offer_id)
+        print(offer_status)
 
         try:
             offer = Offer.objects.get(offer_id=offer_id)
 
-            lister = UserModel.objects.get(pk=offer.list_id.user_id)
-
-            group = ''
-            if user.id > lister.id:
-                group = f'{user.id}-{lister.id}'
-            elif lister.id > user.id:
-                group = f'{lister.id}-{user.id}'
-
-            if offer.offer_status != 'PENDING':
-                return Response({'error': 'Cannot change offer amount'}, status=status.HTTP_400_BAD_REQUEST)
+            if offer.offer_status in ['COMPLETED', 'CANCELLED', 'REJECTED']:
+                return Response({'error': f'Cannot cancel an offer with status {offer.offer_status}'}, status=status.HTTP_400_BAD_REQUEST)
             
-            offer.offer_price = offer_amnt
+            offer.offer_status = offer_status
             offer.save()
 
-            channel_layer = get_channel_layer()
-
-            async_to_sync(channel_layer.group_send)(
-                f'chat_{group}',
-                {
-                    'type': 'offer_update',
-                    'message': f'Offer {offer_id} updated to {offer_amnt}',
-                }
-            )
-
-            return Response({})
+            return Response({'message': f'Offer {offer_status.lower()}'}, status=status.HTTP_200_OK)
 
         except Offer.DoesNotExist:
             return Response({'error': 'Offer not found'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(str(e))
+            return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 
 class GetActiveOfferAPIView(APIView):
@@ -864,19 +854,22 @@ class CarListingCreate(generics.CreateAPIView):
         return instance
 
 @method_decorator(csrf_exempt, name='dispatch')
-class CarListingByCategoryView(APIView):
-    serializer_class = CarListingSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication] 
+# class CarListingByCategoryView(APIView):
+#     serializer_class = CarListingSerializer
+#     permission_classes = [permissions.IsAuthenticated]
+#     authentication_classes = [JWTAuthentication] 
 
-    def get_queryset(self):
-        category = self.kwargs.get('category')
-        return Listing.objects.filter(list_content__category=category)
+#     def get_queryset(self):
+#         category = self.kwargs.get('category')
+#         return Listing.objects.filter(list_content__category=category)
 
-    def get(self, request, category, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.serializer_class(queryset, many=True)
-        return Response(serializer.data)
+#     def get(self, request, category, *args, **kwargs):
+#         queryset = self.get_queryset()
+#         serializer = self.serializer_class(queryset, many=True)
+#         return Response(serializer.data)
+
+
+
 
 class AddCoinsToWalletView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -937,6 +930,50 @@ class ListingStatus(APIView):
             return Response({'list_status': listing.list_status}, status=status.HTTP_200_OK)
         except Listing.DoesNotExist:
             return Response({'error': 'Listing not found'}, status=status.HTTP_404_NOT_FOUND)
+class UpdateListingAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication] 
+
+    def put(self, request, listing_id):
+        try:
+            # Retrieve the listing
+            listing = Listing.objects.get(list_id=listing_id)
+        except Listing.DoesNotExist:
+            return Response({'error': 'Listing not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get the existing list_content
+        current_content = listing.list_content or {}
+        print('Updated nani')
+        print(request.data)  # Print the entire request data to check structure
+
+        # Ensure 'list_content' exists in request data
+        updated_content = request.data.get('list_content', {})
+
+        # Merge current content with incoming updates
+        updated_content = {**current_content, **updated_content}
+        
+        print('Updated content after merge:')
+        print(updated_content)
+
+        # Save the updated listing
+        listing.list_content = updated_content
+        listing.list_status == 'PENDING'
+        listing.save()
+
+        return Response({'message': 'Listing updated successfully', 'updated_content': updated_content}, status=status.HTTP_200_OK)
+
+class PromotedListingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        try:
+            promoted_listings = PromoteListing.objects.all().order_by('?')
+            serializer = PromoteListingDetailSerializer(promoted_listings, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class PromoteListingView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
@@ -1107,18 +1144,41 @@ class UpdateListingStatusView(APIView):
             # If the listing doesn't exist, return a 404 response
             raise Exception(detail="Listing not found.")
 
+# class ListingByCategoryView(APIView):
+#     serializer_class = ListingSerializer
+#     permission_classes = [permissions.AllowAny]
+
+#     def get(self, request, category, *args, **kwargs):
+#         queryset = Listing.objects.filter(list_content__category=category, list_status='ACTIVE')
+#         if queryset.exists():
+#             serializer = self.serializer_class(queryset, many=True)
+#             return Response(serializer.data)
+#         else:
+#             # Return an empty list if no listings are found for the category
+#             return Response([], status=200)
 class ListingByCategoryView(APIView):
     serializer_class = ListingSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny]  # Adjust if needed for authenticated users only
 
     def get(self, request, category, *args, **kwargs):
-        queryset = Listing.objects.filter(list_content__category=category, list_status='ACTIVE')
-        if queryset.exists():
-            serializer = self.serializer_class(queryset, many=True)
-            return Response(serializer.data)
+        # Fetch listings for the category and ensure they are active
+        all_listings = Listing.objects.filter(list_content__category=category, list_status='ACTIVE', user_id__is_active=True)
+
+        # Separate listings by the logged-in user (if authenticated)
+        user = request.user.id if request.user.is_authenticated else None
+
+        if user:
+            user_listings = all_listings.filter(user_id=user)  # Listings of the logged-in user
+            other_listings = all_listings.exclude(user_id=user)  # Listings of other users
+            # Combine user listings first, followed by others
+            combined_listings = list(user_listings) + list(other_listings)
         else:
-            # Return an empty list if no listings are found for the category
-            return Response([], status=200)
+            # If the user is not authenticated, return all listings as is
+            combined_listings = list(all_listings)
+
+        # Serialize and return listings
+        serializer = self.serializer_class(combined_listings, many=True)
+        return Response(serializer.data)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ListingDetailView(APIView):
@@ -1130,7 +1190,7 @@ class ListingDetailView(APIView):
         listing = get_object_or_404(Listing, list_id=list_id)
 
         # First, check if there's an approved listing application
-        listing_application = ListingApplication.objects.filter(list_id=listing, list_app_status='APPROVED').first()
+        listing_application = ListingApplication.objects.filter(list_id=listing).first()
 
         # If no approved listing application, set has_active_listing to False
         if not listing_application:
@@ -1159,6 +1219,55 @@ class ListingDetailView(APIView):
         data = serializer.data if isinstance(serializer.data, dict) else serializer.data[0]
         data['list_app_status'] = list_app_status
         data['has_active_listing'] = has_active_listing
+
+        print("Modified Response Data: ", data)
+
+        return Response(data)
+    
+#joselito update    
+class ListingRejectedDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, list_id, *args, **kwargs):
+        # Get the listing by list_id
+        listing = get_object_or_404(Listing, list_id=list_id)
+
+        # First, check if there's a rejected listing application
+        listing_application = ListingApplication.objects.filter(list_id=listing, list_app_status='REJECTED').first()
+
+        # If no rejected listing application, set has_active_listing to False
+        if not listing_application:
+            has_active_listing = False
+            list_app_status = None  # No rejected application
+            list_reason = None  # No reason available
+        else:
+            # If there's a rejected listing application, check the Listing table for 'active' status
+            existing_active_listing = Listing.objects.filter(
+                user_id=listing.user_id,  # assuming user_id is the user who owns the listing
+                list_status='ACTIVE'
+            ).first()
+
+            if existing_active_listing:
+                # If there's an active listing, set has_active_listing to True
+                has_active_listing = True
+                list_app_status = listing_application.list_app_status  # Already 'REJECTED'
+            else:
+                # If no active listing, set has_active_listing to False
+                has_active_listing = False
+                list_app_status = listing_application.list_app_status  # 'REJECTED'
+
+            # Get the rejection reason from the listing application
+            list_reason = listing_application.list_reason
+
+        # Serialize the listing data
+        serializer = CarListingSerializer(listing)
+
+        # Extract the data (ensure it's a dict, not a list)
+        data = serializer.data if isinstance(serializer.data, dict) else serializer.data[0]
+        data['list_app_status'] = list_app_status
+        data['has_active_listing'] = has_active_listing
+        data['list_reason'] = list_reason  # Add the rejection reason to the response
 
         print("Modified Response Data: ", data)
 
@@ -1199,29 +1308,55 @@ class AssumptorViewListings(APIView):
         else:
             return Response({'message': 'No listing available'}, status=status.HTTP_204_NO_CONTENT)
     
-class RandomListingListView(APIView):
+# class RandomListingListView(APIView):
+#     permission_classes = [permissions.IsAuthenticated]
+#     authentication_classes = [JWTAuthentication] 
+
+#     def get(self, request):
+#         user_id = request.user.id  # Get the authenticated user's ID
+
+#         # Count listings and determine how many to return
+#         total_listings = Listing.objects.exclude(user_id=user_id).aggregate(count=Count('user_id'))['count']
+#         listings_to_return = 10 if total_listings >= 10 else total_listings
+        
+#         # Fetch all listings excluding the user's own listings and select a random sample
+#         all_listings = list(Listing.objects.exclude(user_id=user_id))
+        
+#         # Ensure there are listings to sample from
+#         if not all_listings:
+#             return Response([], status=status.HTTP_200_OK)  # Return an empty list if no listings available
+
+#         random_listings = random.sample(all_listings, min(listings_to_return, len(all_listings)))
+
+#         # Serialize and return the random listings
+#         serializer = ListingSerializer(random_listings, many=True)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class RandomListingListView(APIView): 
     permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication] 
+    authentication_classes = [JWTAuthentication]
 
     def get(self, request):
         user_id = request.user.id  # Get the authenticated user's ID
 
         # Count listings and determine how many to return
-        total_listings = Listing.objects.exclude(user_id=user_id).aggregate(count=Count('user_id'))['count']
+        total_listings = Listing.objects.exclude(user_id=user_id).filter(list_status='ACTIVE').aggregate(count=Count('user_id'))['count']
         listings_to_return = 10 if total_listings >= 10 else total_listings
         
-        # Fetch all listings excluding the user's own listings and select a random sample
-        all_listings = list(Listing.objects.exclude(user_id=user_id))
+        # Fetch all listings excluding the user's own listings and with list_status='ACTIVE'
+        all_listings = list(Listing.objects.exclude(user_id=user_id).filter(list_status='ACTIVE'))
         
         # Ensure there are listings to sample from
         if not all_listings:
             return Response([], status=status.HTTP_200_OK)  # Return an empty list if no listings available
 
+        # Randomly sample listings
         random_listings = random.sample(all_listings, min(listings_to_return, len(all_listings)))
 
         # Serialize and return the random listings
         serializer = ListingSerializer(random_listings, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
 
 class FavoritesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -1229,26 +1364,10 @@ class FavoritesView(APIView):
 
     def get(self, request):
         user = request.user
-        favorites = Favorite.objects.filter(user_id=user).order_by('-fav_date')
+        favorites = Favorite.objects.filter(user_id=user, list_id__list_status = 'ACTIVE', list_id__user_id__is_active=True).order_by('-fav_date')
         
         # Serialize the favorites, which includes the nested listings
         serializer = FavoriteSerializer(favorites, many=True)
-
-        # Log the serialized data to verify its structure
-        print('Favorites Data:', serializer.data)  # Log the serialized data
-        #print(f"Listing Content for Favorite ID {favorites.fav_id}: {favorites.list_content}")
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-class FavoritesMarkView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication] 
-
-    def get(self, request):
-        user = request.user
-        favorites = Favorite.objects.filter(user_id=user)
-        
-        # Serialize the favorites, which includes the nested listings
-        serializer = FavoriteMarkSerializer(favorites, many=True)
 
         # Log the serialized data to verify its structure
         print('Favorites Data:', serializer.data)  # Log the serialized data
@@ -1325,35 +1444,37 @@ class DeactivateUserAPIView(APIView):
         except UserModel.DoesNotExist:
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-@method_decorator(csrf_exempt, name='dispatch')         
+@method_decorator(csrf_exempt, name='dispatch')
 class ListingSearchView(APIView):
     """
     View to search listings or return all listings when no search query is provided.
     """
     serializer_class = CarListingSerializer
-    permission_classes = [permissions.AllowAny] 
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, *args, **kwargs):
         query = self.request.query_params.get('query', None)
-        category = self.request.query_params.get('category', None)  
+        category = self.request.query_params.get('category', None)
         logger.debug(f'Received search query: {query}, category: {category}')
 
-        listings = Listing.objects.all()  
+        listings = Listing.objects.filter(list_status="ACTIVE")  
+
         if category:
-            listings = listings.filter(category__name=category)  
+            listings = listings.filter(category__name=category)
+
         if query:
-            listings = listings.filter(title__icontains=query) 
-        
-        logger.debug(f'Listings found: {listings.count()}') 
+            listings = listings.filter(title__icontains=query)
+
+        logger.debug(f'Listings found: {listings.count()}')
 
         if not listings.exists():
-            logger.warning('No listings found') 
+            logger.warning('No listings found')
             return Response({'message': 'No listings found.'}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = self.serializer_class(listings, many=True)
-        logger.debug(f'Serialized data: {serializer.data}') 
+        logger.debug(f'Serialized data: {serializer.data}')
         return Response(serializer.data, status=status.HTTP_200_OK)
-
+    
 def is_admin(user):
     return user.is_staff
 
@@ -1824,7 +1945,27 @@ def save_fcm_token(request):
         UserAccount.objects.filter(id=user_id).update(fcm_token=fcm_token)
 
         return JsonResponse({'message': 'FCM Token saved successfully!'}, status=200)
-    
+
+@csrf_exempt
+def remove_fcm_token(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        fcm_token = data.get('fcm_token')
+
+        if not user_id or not fcm_token:
+            return JsonResponse({'error': 'User ID and FCM token are required'}, status=400)
+
+        # Remove the FCM token from the database
+        user = UserAccount.objects.filter(id=user_id, fcm_token=fcm_token).first()
+        if user:
+            user.fcm_token = None
+            user.save()
+            return JsonResponse({'message': 'FCM Token removed successfully!'}, status=200)
+        else:
+            return JsonResponse({'error': 'User not found or FCM Token mismatch'}, status=404)
+
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 #jericho's rating update
 class RateUserView(APIView):
@@ -1869,10 +2010,168 @@ class RateUserView(APIView):
         request.data['to_user_id'] = to_user_id
         serializer = self.serializer_class(data=request.data)
 
+        print(serializer.initial_data)
+
         if serializer.is_valid():
+            print('serializer')
+            print(serializer)
+
+
             rating = serializer.save()  # Save the new rating instance
             print("Rating created:", rating)  # Debug: print the created rating instance
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         print("Serializer errors:", serializer.errors)  # Debug: print serializer errors
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class RatingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        user = request.user.id
+        print(f"Authenticated user: {user}")
+
+        # Fetch ratings for the logged-in user where they are the 'to_user_id'
+        ratings = Rating.objects.filter(to_user_id=user).order_by('-created_at')
+        print(f"Ratings Queryset: {ratings}")
+
+        # Serialize the ratings
+        serializer = RatingSerializer(ratings, many=True)
+        print(f"Serialized Ratings: {serializer.data}")
+
+        # Return an empty list if no ratings are found
+        if not ratings.exists():
+            return Response([], status=status.HTTP_200_OK)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class UserEditApplication(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        user = request.user.id
+
+        try:
+            user_acc = UserAccount.objects.get(id=user)
+            acc_serializer = UserRegisterSerializer(user_acc)
+            user_profile = UserProfile.objects.get(user_id=user)
+            profile_serializer = UserProfileSerializer(user_profile)
+
+            return Response({'account': acc_serializer.data, 'profile': profile_serializer.data}, status=status.HTTP_200_OK)
+        except UserAccount.DoesNotExist or UserProfile.DoesNotExist as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class UpdateUserApplication(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def is_base64(self, s):
+        """Check if a string is valid Base64."""
+        try:
+            # Try decoding the string
+            base64.b64decode(s, validate=True)
+            return True
+        except Exception:
+            return False
+
+    def put(self, request):
+        try:
+            user_profile = UserProfile.objects.get(user_id=request.user.id)
+            user_valid_id = request.data.get('user_prof_valid_id')
+            user_picture = request.data.get('user_prof_pic')
+
+            prof_serializer = UserProfileSerializer(user_profile, data=request.data, partial=True)
+
+            if prof_serializer.is_valid():
+                prof_serializer.save()
+                
+                images = {
+                    'valid_id': user_valid_id or user_profile.user_prof_valid_id,
+                    'user_img': user_picture or user_profile.user_prof_pic
+                }
+
+                folder_name = f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} ({request.user.id})"
+                
+                for key, img in images.items():
+                    if self.is_base64(img):
+                        try:
+                        # format, imgstr = img.split(';base64,') 
+                            ext = 'jpg'
+                            
+                            image_data = ContentFile(base64.b64decode(img), name=f"user{request.user.id}_{user_profile.user_prof_fname}_{user_profile.user_prof_lname}.{ext}")
+
+                            upload_result = cloudinary.uploader.upload(image_data, folder=f"user_images/{folder_name}")
+
+                            if key == 'valid_id':
+                                user_profile.user_prof_valid_id = upload_result['secure_url']
+                            elif key == 'user_img': 
+                                user_profile.user_prof_pic = upload_result['secure_url']
+
+                        except Exception as e:
+                            print(str(e))
+                            return JsonResponse({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                        
+                    else:
+                        if key == 'valid_id':
+                            user_profile.user_prof_valid_id = img
+                        elif key == 'user_img':
+                            user_profile.user_prof_pic = img
+
+            user_profile.save()
+            user_app = UserApplication.objects.get(user_id=request.user.id)
+            user_app.user_app_status = 'PENDING'
+            user_app.save()
+
+            reserialize = UserProfileSerializer(user_profile)
+
+            return Response({'profile': reserialize.data, 'status': user_app.user_app_status}, status=status.HTTP_200_OK)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(str(e))
+
+            return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        #jericho update
+class ReceivedReportsListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, *args, **kwargs):
+        reports = Report.objects.filter(
+            report_details__contains={'reported_user_id': str(request.user.id)},
+            report_status='APPROVED'
+        ).order_by('-updated_at')
+        serializer = ViewReportSerializer(reports, many=True)
+        return Response(serializer.data)
+
+
+class SentReportsListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request, *args, **kwargs):
+        # Fetch reports where the logged-in user is the reporter
+        reports = Report.objects.filter(
+            report_details__contains={'reporter_id': str(request.user.id)}
+        ).order_by('-updated_at')
+        serializer = ViewReportSerializer(reports, many=True)
+        return Response(serializer.data)
+
+
+class ReportDetailView(APIView):
+    def get(self, request, report_id):
+        try:
+            report = Report.objects.get(id=report_id)
+            # Assuming you have a ReportSerializer to format the data
+            serializer = ViewReportSerializer(report)
+            
+            # Print the JSON data being returned
+            print(serializer.data)  # This will print the JSON response to the console
+            
+            return Response(serializer.data)
+        except Report.DoesNotExist:
+            return Response({"error": "Report not found"}, status=status.HTTP_404_NOT_FOUND)
+        

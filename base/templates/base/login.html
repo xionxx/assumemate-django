@@ -81,6 +81,8 @@
     .done (function (response) {
         if(response.auth_failed) {
         $('#msg').text(response.auth_failed).addClass('text-center text-danger')
+        } else if(response.redirect) {
+          window.location.href = response.redirect;
         }
     })
     .fail(function (jqXHR) {

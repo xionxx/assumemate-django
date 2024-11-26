@@ -4,7 +4,7 @@ from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from . import api_views
 from . import paypal_views
-from .api_views import MyTokenObtainPairView, RateUserView
+from .api_views import MyTokenObtainPairView, RateUserView, RatingsView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
@@ -28,15 +28,21 @@ urlpatterns = [
     path('update-profile/picture/', api_views.UpdateUserProfilePicture.as_view(), name='update-profile-picture'),   #update profile picture
     path('view-convo/<int:receiver_id>/', api_views.GetMessageAPIView.as_view(), name='view-convo'),    #get entire conversation with the user
     path('make/offer/', api_views.MakeOfferAPIView.as_view(), name='make-offer'),   #make offer
-    path('update/offer/', api_views.UpdateOfferAPIView.as_view(), name='update-offer'), #update offered price
+    path('cancel/offer/', api_views.CancelOfferAPIView.as_view(), name='cancel-offer'), #cancel offer for deactivated assumptor
     path('assumptor/list/offers/', api_views.AssumptorListOffers.as_view(), name='assumptor-list-offers'),  #all active offers received by assumptor (own profile)
     path('assumptor/all/<str:list_status>/listings/', api_views.AssumptorListings.as_view(), name='assumptor-lists'), #all listings of assumptor (own profile)
     path('assumptor/<int:user_id>/all/listings/', api_views.AssumptorViewListings.as_view(), name='assumptor-lists'),   #get assumptor's listings (other user viewing)
     path('view/user/inbox/', api_views.UserChatRoomAPIView.as_view(), name='inbox'),    #user's inbox
+
+    path('view/user/application/', api_views.UserEditApplication.as_view(), name='user-application'),    #user's information for edit rejected application
+    path('update/user/application/', api_views.UpdateUserApplication.as_view(), name='user-application'),    #user's information for update rejected application
     
     path('add/listings/', api_views.CarListingCreate.as_view(), name='car-listing-create'), #assumptor create listing
     path('random/listings/', api_views.RandomListingListView.as_view(), name='random-listing'), #random listiing in detail screen
     path('listings/details/<uuid:list_id>/', api_views.ListingDetailView.as_view(), name='listing_details'),    #listing details
+
+    #joselito
+    path('listings/rejected/<uuid:list_id>/', api_views.ListingRejectedDetailView.as_view(), name='listing_rejected'),    #listing rejected
     path('get/active/offer/<int:receiver_id>/', api_views.GetActiveOfferAPIView.as_view(), name='active-offer'),    #assumee message screen: active offer for that assumptor
     path('get/<int:receiver_id>/listing/offer/', api_views.GetListingOfferAPIView.as_view(), name='listing-offer'), #assumptor message screen: active offer of that assumee
 
@@ -48,6 +54,8 @@ urlpatterns = [
     path('listing/<uuid:listing_id>/update-status/', api_views.UpdateListingStatusView.as_view(), name='update-listing-status'),   
     path('listingstats/<uuid:listing_id>/', api_views.ListingStatus.as_view(), name='listing-status'),
     path('promote_listing/', api_views.PromoteListingView.as_view(), name='promote-listing'),
+    path('promote/', api_views.PromotedListingsView.as_view(), name='promoted'),
+    path('update_listing/<uuid:listing_id>/', api_views.UpdateListingAPIView.as_view(), name='update_listing'),
 
 
     path('listings/<str:category>/', api_views.ListingByCategoryView.as_view(), name='listings_by_category'),   #feed screen all active listings
@@ -56,7 +64,6 @@ urlpatterns = [
     path('favorites/add/', api_views.AddFavoriteView.as_view(), name='add_favorite'),   #like listing
     path('favorites/remove/', api_views.RemoveFavoriteView.as_view(), name='remove_favorite'),  #unlike listing
     path('favorites/', api_views.FavoritesView.as_view(), name='favorites'),    #
-    path('favorites/mark', api_views.FavoritesMarkView.as_view(), name='favorites_mark'),   #user's all favorite
 
     path('user/follow/', api_views.FollowUser.as_view(), name='follow_user'),   #follow user
     path('user/unfollow/', api_views.UnfollowUser.as_view(), name='unfollow_user'), #unfollow user
@@ -64,6 +71,7 @@ urlpatterns = [
     path('follower/list/', api_views.ListFollower.as_view(), name='list_follower'), #followers list
     path('send/report/', api_views.ReportView.as_view(), name='send_report'),   #send report
     path('rate/', RateUserView.as_view(), name='rate_user'), #send rate
+    path('view/rate', RatingsView.as_view(), name='rate_views'),  #view rate
 
     path('paypal/onboard/', paypal_views.PaypalOnboard.as_view(), name='paypal_onboard'),   #link paypal
     path('create/order/', api_views.CreateOrder.as_view(), name='create_order'), #create order for offer or buy
@@ -86,6 +94,13 @@ urlpatterns = [
     path('notifications/', api_views.NotificationListView.as_view(), name='notification-list'), #notificaions
     path('notifications/<int:pk>/read/', api_views.MarkNotificationAsReadView.as_view(), name='mark-notification-read'),    #mark notif as read
     path('save_fcm_token/', api_views.save_fcm_token, name='save_fcm_token'),   #save token
+    path('remove_fcm_token/', api_views.remove_fcm_token, name='remove_fcm_token'),   #save token
+    path('reports/received/', api_views.ReceivedReportsListView.as_view(), name='reports-received'),
+    path('reports/sent/', api_views.SentReportsListView.as_view(), name='reports-sent'),
+
+
+
+
 ]
 
 if settings.DEBUG:
