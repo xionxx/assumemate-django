@@ -20,7 +20,7 @@ baseURL = os.getenv('PAYPAL_BASE_URL')
 
 
 def get_paypal_access_token():
-    url = "https://api-m.sandbox.paypal.com/v1/oauth2/token"
+    url = f"{baseURL}/v1/oauth2/token"
     headers = {"Accept": "application/json", "Accept-Language": "en_US"}
     auth = (client_id, secret_key)
     data = {"grant_type": "client_credentials"}
@@ -53,7 +53,7 @@ class PaypalOnboard(APIView):
         data ={ "email": email,
             "tracking_id": f"{assumptor_id}",
             "partner_config_override": {
-                "return_url": f"http://{baseUrl}/user/onboarded/",
+                "return_url": f"{baseURL}/v1/user/onboarded/",
                 "return_url_description": "the url to return the merchant after the paypal onboarding process.",
                 "show_add_credit_card": False
             },
@@ -120,7 +120,7 @@ class CreatePaypalOrder(APIView):
         # if 'order_id' in data:
         #     order_id = data.get('order_id')
 
-        #     order = OrderListing.objects.get(order_id=order_id)
+        #     order = ReservationInvoice.objects.get(order_id=order_id)
             
         #     amount = order.order_price
 
@@ -193,14 +193,14 @@ class CapturePaypalOrder(APIView):
                 order = None
                 if order_id:
                     try:
-                        order = OrderListing.objects.get(order_id=order_id)
+                        order = ReservationInvoice.objects.get(order_id=order_id)
                         order.order_status = 'PAID'
                         order.save()
 
                         if order.offer_id:
                             order.offer_id.offer_status = 'PAID'
                             order.offer_id.save()
-                    except OrderListing.DoesNotExist:
+                    except ReservationInvoice.DoesNotExist:
                         return Response({'error': 'Order not found'}, status=404)
                     
                 capture_response = req.post(capture_url, headers=auth_header)

@@ -1,13 +1,14 @@
 from io import BytesIO
 import json
 import os
+from PyPDF2 import PdfReader, PdfWriter
 from dotenv import load_dotenv
 import random, string, cloudinary, base64
 from django.views.decorators.csrf import csrf_protect
-from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from django.db import IntegrityError
 from smtplib import SMTPConnectError, SMTPException
+import requests as req
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -36,6 +37,10 @@ from django.contrib.auth import login as login, authenticate, logout, get_user_m
 
 load_dotenv()
 UserModel = get_user_model()
+
+client_id = os.getenv('PAYPAL_CLIENT_ID')
+secret_key = os.getenv('PAYPAL_CLIENT_SECRET')
+baseURL = os.getenv('PAYPAL_BASE_URL')
 
 def is_admin(user):
     return user.is_staff
@@ -302,6 +307,7 @@ def pending_accounts_view(request):
     context = {
         'pending_assumptors': pending_assumptors,
         'pending_assumees': pending_assumees,
+        'nav': 'pending_user'
     }
     
     return render(request, 'base/rev_pending_users.html', context)
@@ -311,6 +317,7 @@ def assumemate_rev_report_users(request):
     reports = Report.objects.filter(report_status='PENDING')
     context = {
         'reports': reports,
+        'nav': 'reports',
     }
     return render(request, 'base/rev_reported_users.html', context)
 
@@ -351,6 +358,7 @@ def assumemate_users(request):
         'isreviewer_count': isreviewer_count,
         'total_user': total_user,
         'application': application,
+        'nav': 'user'
     }
 
     return render(request, 'base/users.html', context)
@@ -409,7 +417,7 @@ def assumemate_listing(request):
         'house_and_lot_count': house_and_lot_count,
         'motorcycles_count': motorcycles_count,
         'cars_count': cars_count,
-        
+        'nav': 'listing'
     }
 
     return render(request, 'base/listing.html', context)
@@ -522,6 +530,7 @@ def platform_report(request):
         'user_counts': user_counts,
         'assumptors_counts': assumptors_counts,
         'assumees_counts': assumees_counts,
+        'nav': 'report'
     }
     return render(request, 'base/reports.html', context)
 
@@ -579,6 +588,7 @@ def assumemate_rev_pending_list(request):
     
     context = {
         'pending_listings': pending_listings,
+        'nav': 'pending_list'
     }
     
     return render(request, 'base/rev_pending_listing.html', context)
@@ -606,7 +616,7 @@ def usertype_is_active(request, admin_id, status):
 
 @login_required
 def base(request):
-    context = {}
+    context = {'nav': 'home'}
     return render(request, "base/home.html", context)
 
 # @user_passes_test(is_admin)
@@ -832,8 +842,8 @@ def accept_listing(request, list_app_id):
         fcm_token = user_account.fcm_token  
 
         if fcm_token:
-            title = 'Listing Application Accepted'
-            message = 'Your Listing Application has been accepted.'
+            title = 'Listing Application approved'
+            message = 'Your Listing Application has been approved.'
             
             listing_images = listing.list_content.get('images', [])
             first_image_url = listing_images[0] if listing_images else None
@@ -846,7 +856,7 @@ def accept_listing(request, list_app_id):
             send_push_notification(fcm_token, title, message, image_url=first_image_url, data_payload=data_payload)
 
         # Display success message and redirect
-        messages.success(request, 'Listing application has been accepted.')
+        messages.success(request, 'Listing application has been approved.')
         return redirect('assumemate_rev_pending_list')
 
     messages.error(request, 'Invalid request method.')
@@ -946,7 +956,7 @@ def accept_report(request, report_id):
     report.updated_at = timezone.now()
     report.reviewer = request.user # toy mao rani ibutang para sa katung reviewer i edit lang iif unsay fieldname nimo sa reviewer
     report.save()
-    messages.success(request, 'Report has been accepted.')
+    messages.success(request, 'Report has been approved.')
     return redirect('assumemate_rev_report_users')  
 
 @login_required
@@ -1080,7 +1090,7 @@ def dashboard(request):
         'suspended_user_count': suspended_user_count,
         'approved_reports': approved_reports,
         'pending_reports': pending_reports,
-
+        'nav': 'home'
     }
     return render(request, 'base/dashboard.html', context)
 
@@ -1115,3 +1125,132 @@ def toggle_user_status(request, user_id, user_type, status):
     elif user_type == 'reviewer':
         return redirect('reviewer_acc_list')
     
+@login_required
+@user_passes_test(is_admin)
+def payout_requests_lists(request):
+    payout_requests = PayoutRequest.objects.all()  # Fetch all payout requests
+    return render(request, 'base/payout_requests.html', {'payout_requests': payout_requests})
+
+@login_required
+@user_passes_test(is_admin)
+def payout_requests_details(request, payout_id):
+    try:
+        payout_details = PayoutRequest.objects.get(payout_id=payout_id)  # Fetch all payout requests
+        payout_details.payout_fee = float(payout_details.order_id.order_price) * 0.05
+        payout_details.payout_amount_after_fee = float(payout_details.order_id.order_price) * 0.95
+        return render(request, 'base/payout_request_details.html', {'payout_details': payout_details})
+    except PayoutRequest.DoesNotExist:
+        return
+    
+def get_paypal_access_token():
+    url =  f"{baseURL}/v1/oauth2/token"
+    headers = {"Accept": "application/json", "Accept-Language": "en_US"}
+    auth = (client_id, secret_key)
+    data = {"grant_type": "client_credentials"}
+
+    response = req.post(url, headers=headers, auth=auth, data=data)
+    response.raise_for_status()
+    return response.json().get("access_token")
+
+def get_captured_payment(capture_id):
+    url =  f'{baseURL}/v2/payments/captures/{capture_id}'
+    access = get_paypal_access_token()
+    headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {access}',
+                "Accept": "application/json"
+            }
+    
+    response = req.get(url, headers=headers)
+
+    print(response)
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return None
+
+@login_required
+@user_passes_test(is_admin)
+def send_payout(request, payout_id):
+    try:
+        payout = PayoutRequest.objects.get(payout_id=payout_id)
+
+        transaction = Transaction.objects.get(order_id=payout.order_id)
+
+        capture_id = transaction.transaction_paypal_capture_id
+
+        captured = get_captured_payment(capture_id)
+
+        if captured: 
+            cap_amnt = captured['amount']['value']
+            # cap_amnt = 100.0
+
+            total_payout = float(cap_amnt) * 0.95
+
+            print(payout.payout_paypal_email)
+            print(str(payout.order_id.list_id))
+            print(payout.order_id.list_id)
+
+            payout_url = f'{baseURL}/v1/payments/payouts'
+            access = get_paypal_access_token()
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {access}',
+                "Accept": "application/json"
+            }
+
+            payout_data = {
+                "sender_batch_header": {
+                    "sender_batch_id": f"payout_trial-{payout_id}",
+                    "email_subject": "You have a payout from Assumemate!"
+                },
+                "items": [
+                    {
+                    "recipient_type": "EMAIL",
+                    "amount": {
+                        "value": total_payout,
+                        "currency": "PHP"
+                    },
+                    "note": "Thanks for using our service!",
+                    "sender_item_id": f'list-{payout.order_id.list_id}',
+                    "receiver": payout.payout_paypal_email
+                    }
+                ]
+            }
+
+            # print(capture_id)
+
+            response = req.post(payout_url, headers=headers, json=payout_data)
+
+            print(response)
+
+            response.raise_for_status()
+
+            if response.status_code == 201:
+                payout.payout_status = 'SENT'
+                payout.save()
+                print('yawa na kaayu')
+                print(response)
+                
+                transaction = Transaction.objects.create(
+                    user_id=request.user,
+                    transaction_amount=total_payout,  # Use the amount passed from the request
+                    transaction_type='PAYOUT',
+                    transaction_date=timezone.now(),
+                )
+
+                return JsonResponse({'message': 'Payout sent!'}, status=status.HTTP_200_OK)
+            else:
+                print(response.raise_for_status())
+                return JsonResponse({'error': 'Failed to process payout. PayPal error.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        else:
+            return JsonResponse({'error': 'Failed to retrieve capture details from PayPal.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        print(str(e))
+        return JsonResponse({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    # payout_requests = PayoutRequest.objects.all()  # Fetch all payout requests
+    # return render(request, 'base/payout_request_details.html', {'payout_requests': payout_requests})

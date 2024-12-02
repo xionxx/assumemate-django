@@ -14,17 +14,17 @@ UserModel = get_user_model()
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        user = self.scope['user']
+        self.user = self.scope['user']
 
-        if not user.is_authenticated:
+        if not self.user.is_authenticated:
             await self.close()
             return
             
         self.other_user_id = self.scope['url_route']['kwargs']['receiver_id']
-        if int(user.id) > int(self.other_user_id):
-            self.room_name = f'{user.id}-{self.other_user_id}'
+        if int(self.user.id) > int(self.other_user_id):
+            self.room_name = f'{self.user.id}-{self.other_user_id}'
         else:
-            self.room_name = f'{self.other_user_id}-{user.id}'
+            self.room_name = f'{self.other_user_id}-{self.user.id}'
 
 
         self.room_group_name = 'chat_%s' % self.room_name
@@ -315,6 +315,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 if offer_status == 'ACCEPTED':
                     listing.list_status = 'RESERVED'
+
+                    other_offers = Offer.objects.filter(list_id=list_id).exclude(offer_id=offer_id)
+                    for other_offer in other_offers:
+                        other_offer.offer_status = 'REJECTED'
+                        other_offer.save()
+
+                        message = f'Offer rejected'
+
+                        messages = {
+                            'text': message,
+                            'file': None,
+                            'file_type': None
+                        }
+
+                        self.save_message(self.user.id, messages, other_offer.user_id.id)
+
                 elif offer_status == 'CANCELLED':
                     listing.list_status = 'ACTIVE'
                 

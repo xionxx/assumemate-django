@@ -103,6 +103,12 @@ a.sidebar-link {
     font-size: 1rem;
 }
 
+.avatar {
+    width: 100%; /* Ensure the image covers the container */
+    height: 100%; /* Stretch to fit if necessary */
+    object-fit: cover; /* Keeps the image aspect ratio */
+  }
+
 .sidebar-item a:hover {
     border-top-left-radius: 30px;
     border-bottom-left-radius: 30px;

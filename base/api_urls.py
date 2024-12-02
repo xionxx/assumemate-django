@@ -40,6 +40,10 @@ urlpatterns = [
     path('add/listings/', api_views.CarListingCreate.as_view(), name='car-listing-create'), #assumptor create listing
     path('random/listings/', api_views.RandomListingListView.as_view(), name='random-listing'), #random listiing in detail screen
     path('listings/details/<uuid:list_id>/', api_views.ListingDetailView.as_view(), name='listing_details'),    #listing details
+    path('assumptor/on-going/transactions/', api_views.AssumptorCurrentTransaction.as_view(), name='assumptor_transaction'),    #transaction on going assumptor
+    path('assumptor/completed/transactions/', api_views.AssumptorCompleteTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumptor
+    path('assumee/on-going/transactions/', api_views.AssumeeCurrentTransaction.as_view(), name='assumptor_transaction'),    #transaction on going assumee
+    path('assumee/completed/transactions/', api_views.AssumeeCompleteTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumee
 
     #joselito
     path('listings/rejected/<uuid:list_id>/', api_views.ListingRejectedDetailView.as_view(), name='listing_rejected'),    #listing rejected
@@ -64,6 +68,7 @@ urlpatterns = [
     path('favorites/add/', api_views.AddFavoriteView.as_view(), name='add_favorite'),   #like listing
     path('favorites/remove/', api_views.RemoveFavoriteView.as_view(), name='remove_favorite'),  #unlike listing
     path('favorites/', api_views.FavoritesView.as_view(), name='favorites'),    #
+    path('favorites/mark', api_views.FavoritesMarkView.as_view(), name='favorites_mark'),   #user's all favorite
 
     path('user/follow/', api_views.FollowUser.as_view(), name='follow_user'),   #follow user
     path('user/unfollow/', api_views.UnfollowUser.as_view(), name='unfollow_user'), #unfollow user
@@ -80,6 +85,12 @@ urlpatterns = [
     path('create/paypal/order/', paypal_views.CreatePaypalOrder.as_view(), name='view_order'),  #create paypal order
     path('capture/paypal/order/', paypal_views.CapturePaypalOrder.as_view(), name='view_order'),  #pay listing order
     path('cancel/paypal/', paypal_views.PaypalPaymentCancelled.as_view(), name='paypal_payment_cancelled'), #cancel payment
+
+    path('view/transaction/<int:order_id>/details/', api_views.TransactionDetails.as_view(), name='view_transaction'), #view transaction details
+    path('complete/transaction/<int:order_id>/', api_views.MarkCompleteTransaction.as_view(), name='complete_transaction'), #view transaction details
+    path('mark/sold/<int:order_id>/', api_views.MarkSoldListing.as_view(), name='sold_listing'), #mark lsiting as sold after transaction is complete
+    path('request/payout/', api_views.RequestPayout.as_view(), name='request_payout'), #mark lsiting as sold after transaction is complete
+    path('get/request/payout/<int:order_id>/', api_views.PayoutView.as_view(), name='view_request_payout'), #mark lsiting as sold after transaction is complete
 
     # SEAN
     path('create-paypal-order/', api_views.CreatePaypalOrder.as_view(), name='create_paypal_order'),    #create order for top-up

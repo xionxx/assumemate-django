@@ -1,0 +1,78 @@
+{% extends "base/base.html" %}
+{% block content %}
+{% load humanize %}
+
+
+<div class="container mt-3">
+    <!-- Page Title -->
+    <div class="row mb-2">
+        <div class="col text-center">
+            <h3 class="fw-bold">Payout Request Details</h3>
+            <hr class="w-25 mx-auto">
+        </div>
+    </div>
+
+    <!-- Payout Details Section -->
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-lg ">
+                <div class="card-header bg-primary text-white">
+                    <h5>Payout Information: Payout {{ payout_details.payout_status|title }}</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless">
+                        <tbody>
+                            <tr>
+                                <th class="font-weight-bold">Payout ID</th>
+                                <td class="text-muted text-md-end">{{ payout_details.payout_id }}</td>
+                            </tr>
+                            <tr>
+                                <th class="font-weight-bold">Payout to (PayPal) </th>
+                                <td class="text-muted text-md-end">{{ payout_details.payout_paypal_email }}</td>
+                            </tr>
+                            <tr>
+                                <th class="font-weight-bold">Requested By</th>
+                                <td class="text-muted text-md-end">{{ payout_details.user_id.profile.user_prof_fname }} {{ payout_details.user_id.profile.user_prof_lname }}</td>
+                            </tr>
+                            <tr>
+                                <th class="font-weight-bold">Requested Date</th>
+                                <td class="text-muted text-md-end">{{ payout_details.payout_created_at|date:"M d, Y H:i A" }}</td>
+                            </tr>
+                            <tr>
+                                <th class="font-weight-bold">Payout Status</th>
+                                <td class="text-muted text-md-end">{{ payout_details.payout_status }}</td>
+                            </tr>
+                            <tr>
+                                <th class="font-weight-bold">Payout Amount</th>
+                                <td class="text-muted text-md-end">₱{{ payout_details.order_id.order_price|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <th class="font-weight-bold">-Fee</th>
+                                <td class="text-muted text-md-end">₱{{ payout_details.payout_fee|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <th class="font-weight-bold">Total Payout</th>
+                                <td class="text-muted text-md-end">₱{{ payout_details.payout_amount_after_fee|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <!-- <tr>
+                                <th class="font-weight-bold">Order ID</th>
+                                <td class="text-muted text-md-end">{{ payout_details.order_id.order_id }}</td>
+                            </tr> -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer d-flex justify-content-between">
+                    <a href="{% url 'payout_requests' %}" class="btn btn-secondary">Back to List</a>
+                    {% if payout_details.payout_status == 'PENDING' %}
+                    <div>
+                        <a href="{% url 'approve_payout' payout_details.payout_id %}" id="approve-btn" class="btn btn-success me-2" data-payout-id="">Approve</button>
+                        <button id="reject-btn" class="btn btn-danger" data-payout-id="">Reject</button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock content %}

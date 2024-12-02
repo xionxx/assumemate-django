@@ -67,9 +67,6 @@
                                         <a class="btn btn-sm btn-danger" href="{% url 'is_deactivate' reviewer.id %}">
                                             <i class="fa-regular fa-trash-can"></i>
                                         </a>
-                                        <a class="btn btn-sm btn-warning" href="#">
-                                            <i class="fa-regular fa-pen-to-square"></i>
-                                        </a>
                                     {% else %}
                                         <a class="btn btn-sm" href="{% url 'is_activate' reviewer.id %}" style="background-color: green; color: white; border: none;">
                                             <i class="fas fa-recycle"></i>

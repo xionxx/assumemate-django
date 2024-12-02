@@ -14,11 +14,15 @@ urlpatterns = [
     path('update/profile/', views.update_profile, name='update_profile'),
     path('change/password/', views.change_password, name='change_password'),
 
+    path('payout-requests/', views.payout_requests_lists, name='payout_requests'),
+    path('view/payout-requests/<int:payout_id>/', views.payout_requests_details, name='view_payout_request_details'),
+    path('approve_payout/<int:payout_id>/', views.send_payout, name='approve_payout'),
+    path('reject_payout/<int:payout_id>/', views.payout_requests_lists, name='reject_payout'),
+
     path('activate/<int:admin_id>/', views.usertype_is_active, {'status': True}, name='is_activate'),
     path('deactivate/<int:admin_id>/', views.usertype_is_active, {'status': False}, name='is_deactivate'),
 
     path('users/application', views.user_application_list, name='user_application_list'),
-
     path('user_login/', views.user_login, name='user_login'),
     path('logout/', views.logout_user, name='user_logout'),
     path('forgot-password/', views.forgot_password, name='forgot_password'),

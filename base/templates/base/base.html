@@ -34,29 +34,29 @@
                 {% if request.user.is_authenticated %}
                     <div class="profile">
                             <img class="avatar" src="{{ request.user.profile.user_prof_pic }}"></br>
-                            <h3>{{user.first_name}}  {{user.last_name}}</h3>
+                            <h3>{{request.user.profile.user_prof_fname}}  {{request.user.profile.user_prof_lname}}</h3>
                             {% if user.is_staff %}
                             <p>Administrator</p>
-                            {%elif user.is_reviewer %}
+                            {%elif request.user.is_reviewer %}
                             <p>Reviewer</p>
                             {% endif %}
                             <a href="/user/edit/profile" class="btn btn-outline-light btn-sm">Edit Profile</a>
                             </div>
                                 <li class="sidebar-item">
-                                    <a href="/dashboard" class="sidebar-link">
+                                    <a href="/dashboard" class="sidebar-link {% if nav == 'home' %}active{% endif %}">
                                         <i class="fa-solid fa-house fa-sm pe-2"></i>
                                         Home
                                     </a>
                                 </li>
                                 {% if user.is_staff %}
                                 <li class="sidebar-item">
-                                    <a href="/assumemate/listing" class="sidebar-link">
+                                    <a href="/assumemate/listing" class="sidebar-link {% if nav == 'listing' %}active{% endif %}">
                                         <i class="fa-solid fa-th-list fa-sm pe-2"></i>
                                         Listings
                                     </a>
                                 </li>
                                 <li class="sidebar-item">
-                                    <a href="/assumemate/users/list" class="sidebar-link">
+                                    <a href="/assumemate/users/list" class="sidebar-link {% if nav == 'user' %}active{% endif %}">
                                         <i class="fa-solid fa-users pe-2"></i>
                                         Users
                                     </a>
@@ -76,29 +76,41 @@
                                     </a>
                                 </li>
                                 <li class="sidebar-item">
-                                    <a href="/Admin/PlatformReport" class="sidebar-link">
+                                    <a href="/payout-requests" class="sidebar-link {% if nav == 'payout' %}active{% endif %}">
+                                        <i class="fa-solid fa-user-shield pe-2"></i>
+                                        Payout Requests
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="/list/reviewer" class="sidebar-link {% if nav == 'refund' %}active{% endif %}">
+                                        <i class="fa-solid fa-user-shield pe-2"></i>
+                                        Refund Requests
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="/Admin/PlatformReport" class="sidebar-link {% if nav == 'report' %}active{% endif %}">
                                         <i class="fa-solid fa-chart-line pe-2"></i>
                                         Reports
                                     </a>
                                 </li>
                                 {% endif %}
 
-                                {% if user.is_reviewer %}
+                                {% if request.user.is_reviewer %}
                                 <li class="sidebar-item">
-                                    <a href="/Assumemate/Reviewer/Pending Users" class="sidebar-link">
+                                    <a href="/Assumemate/Reviewer/Pending Users" class="sidebar-link {% if nav == 'pending_user' %}active{% endif %}">
                                         <i class="fa-solid fa-th-list fa-sm pe-2"></i>
                                         Pending Users
                                     </a>
                                 </li>
                                 <li class="sidebar-item">
-                                    <a href="/Assumemate/Reviewer/Pending Listing" class="sidebar-link">
+                                    <a href="/Assumemate/Reviewer/Pending Listing" class="sidebar-link {% if nav == 'pending_list' %}active{% endif %}">
                                         <i class="fa-solid fa-users pe-2"></i>
                                         Pending Listings
                                     </a>
     
                                 </li>
                                 <li class="sidebar-item">
-                                    <a href="/Assumemate/Reviewer/Reported Users" class="sidebar-link ">
+                                    <a href="/Assumemate/Reviewer/Reported Users" class="sidebar-link {% if nav == 'reports' %}active{% endif %}">
                                         <i class="fa-solid fa-user-tie pe-2"></i>
                                         Report Review
                                     </a>

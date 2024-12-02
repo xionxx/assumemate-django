@@ -183,7 +183,7 @@ class Report(models.Model):
             # Notify the reporter
             if reporter_user:
                 Notification.objects.create(
-                    notif_message='Your report has been accepted.',
+                    notif_message='Your report has been approved.',
                     recipient=reporter_user,
                     triggered_by=reporter_user,  # Self-triggered
                     notification_type="Report",
@@ -193,8 +193,8 @@ class Report(models.Model):
                 if fcm_token:
                     send_push_notification(
                         fcm_token=fcm_token,
-                        title="Report Accepted",
-                        body="Your report has been accepted.",
+                        title="Report approved",
+                        body="Your report has been approved.",
                         data_payload={"route": "reports/sent/"},
                     )
 
@@ -278,7 +278,7 @@ class ListingApplication(models.Model):
 
         super().save(*args, **kwargs)
 
-        if (status_changed or self._state.adding) and self.list_app_status in ['ACCEPTED', 'REJECTED']:
+        if (status_changed or self._state.adding) and self.list_app_status in ['APPROVED', 'REJECTED']:
             message = f"Your listing application {self.list_app_id} has been {self.list_app_status.lower()}."
             Notification.objects.create(
                 notif_message=message,
@@ -316,6 +316,7 @@ class Offer(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
         ('ACCEPTED', 'Accepted'),
+        ('PAID', 'Paid'),
         ('REJECTED', 'Rejected'),
         ('CANCELLED', 'Cancelled'),
     ]
@@ -774,7 +775,6 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.recipient.email}: {self.notif_message}"
-    
 
 class Paypal(models.Model):
     user_id = models.OneToOneField(UserAccount, on_delete=models.CASCADE, null=False, primary_key=True, editable=False, db_column='user_id', related_name='paypal')
@@ -784,18 +784,18 @@ class Paypal(models.Model):
     class Meta:
         db_table='user_paypal'
 
-class OrderListing(models.Model):
-    order_id= models.BigAutoField(primary_key=True, editable=False, null=False)
-    order_price = models.DecimalField(max_digits=12, decimal_places=2)
-    order_status = models.CharField(max_length=255, default='PENDING')
-    order_created_at = models.DateTimeField(auto_now_add=True)
-    order_updated_at = models.DateTimeField(auto_now=True)
+class ReservationInvoice(models.Model):
+    order_id= models.BigAutoField(primary_key=True, editable=False, null=False, db_column='invoice_id')
+    order_price = models.DecimalField(max_digits=12, decimal_places=2, db_column='invoice_price')
+    order_status = models.CharField(max_length=255, default='PENDING', db_column='invoice_status')
+    order_created_at = models.DateTimeField(auto_now_add=True,db_column='invoice_created_at')
+    order_updated_at = models.DateTimeField(auto_now=True, db_column='invoice_updated_at')
     offer_id = models.ForeignKey(Offer, null=True, on_delete=models.SET_NULL, blank=True, db_column='offer_id')
     list_id = models.ForeignKey(Listing, null=True, on_delete=models.SET_NULL, blank=True, db_column='list_id')
-    user_id = models.ForeignKey(UserAccount, blank=False, null=False, on_delete=models.PROTECT, related_name='order_listing', db_column='user_id' )
+    user_id = models.ForeignKey(UserAccount, blank=False, null=False, on_delete=models.PROTECT, related_name='invoice', db_column='user_id' )
 
     class Meta:
-        db_table = 'order_listing'
+        db_table = 'invoice'
 
 class Transaction(models.Model):
     transaction_id = models.BigAutoField(primary_key=True, editable=False)
@@ -806,13 +806,52 @@ class Transaction(models.Model):
     # transaction_status = models.CharField(max_length=50, default='COMPLETED')
     transaction_date = models.DateTimeField(auto_now_add=True)
     transaction_type = models.CharField(max_length=50, default='TOPUP')
-    order_id=models.ForeignKey(OrderListing, on_delete=models.SET_NULL, null=True, blank=True, db_column='order_id', related_name='order_listing')
+    order_id=models.ForeignKey(ReservationInvoice, on_delete=models.SET_NULL, null=True, blank=True, db_column='invoice_id', related_name='invoice')
     
     class Meta:
         db_table = 'transaction'
     
     def __str__(self):
         return f"Transaction {self.order_id or 'N/A'} - complete"
+
+class PayoutRequest(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('SENT', 'Approved'),
+        ('REJECTED', 'Rejected'),
+        # ('CANCELLED', 'Cancelled'),
+        ('COMPLETED', 'Completed'),
+    ]
+
+    payout_id = models.BigAutoField(primary_key=True, editable=False, null=False, db_column='payout_id')
+    payout_paypal_email = models.EmailField(null=False, blank=False)
+    payout_status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING')
+    payout_created_at = models.DateTimeField(auto_now_add=True, null=False)
+    payout_updated_at = models.DateTimeField(auto_now=True, null=False)
+    order_id = models.OneToOneField(ReservationInvoice, blank=False, null=False, on_delete=models.PROTECT, db_column='order_id', related_name='payout_request')
+    user_id = models.ForeignKey(UserAccount, blank=False, null=False, on_delete=models.PROTECT, related_name='payout_request', db_column='user_id' )
+    
+    class Meta:
+        db_table = 'payout_request'
+
+class RefundRequest(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('REFUNDED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+        # ('CANCELLED', 'Cancelled'),
+        ('COMPLETED', 'Completed'),
+    ]
+
+    refund_id = models.BigAutoField(primary_key=True, editable=False, null=False, db_column='refund_id')
+    refund_status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING')
+    refund_created_at = models.DateTimeField(auto_now_add=True, null=False)
+    refund_updated_at = models.DateTimeField(auto_now=True, null=False)
+    order_id = models.OneToOneField(ReservationInvoice, blank=False, null=False, on_delete=models.PROTECT, db_column='order_id', related_name='refund_request')
+    user_id = models.ForeignKey(UserAccount, blank=False, null=False, on_delete=models.PROTECT, related_name='refund_request', db_column='user_id' )
+    
+    class Meta:
+        db_table = 'refund_request'
 
 class Rating(models.Model):
     rate_id = models.BigAutoField(primary_key=True, editable=False)

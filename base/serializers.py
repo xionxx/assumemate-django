@@ -160,26 +160,29 @@ class UserProfileSerializer(serializers.ModelSerializer):
         
         return value
 
+    def to_title_case(self, value):
+        return value.title() if isinstance(value, str) else value
+
     def create(self, validated_data):
-        print(validated_data.get('user_id'))
-        # userId = validated_data.get('user_prof_mobile')
+        validated_data['user_prof_fname'] = self.to_title_case(validated_data.get('user_prof_fname'))
+        validated_data['user_prof_lname'] = self.to_title_case(validated_data.get('user_prof_lname'))
+        validated_data['user_prof_gender'] = self.to_title_case(validated_data.get('user_prof_gender'))
+        validated_data['user_prof_address'] = self.to_title_case(validated_data.get('user_prof_address'))
         validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data.get('user_prof_mobile'))
 
-        # validated_data['user_id'] = UserModel.objects.get(id=userId)
         user = super().create(validated_data)
-
         return user
-    
+
     def update(self, instance, validated_data):
         if 'user_prof_mobile' in validated_data:
             validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data['user_prof_mobile'])
 
-        instance.user_prof_fname = validated_data.get('user_prof_fname', instance.user_prof_fname)
-        instance.user_prof_lname = validated_data.get('user_prof_lname', instance.user_prof_lname)
-        instance.user_prof_gender = validated_data.get('user_prof_gender', instance.user_prof_gender)
+        instance.user_prof_fname = self.to_title_case(validated_data.get('user_prof_fname', instance.user_prof_fname))
+        instance.user_prof_lname = self.to_title_case(validated_data.get('user_prof_lname', instance.user_prof_lname))
+        instance.user_prof_gender = self.to_title_case(validated_data.get('user_prof_gender', instance.user_prof_gender))
+        instance.user_prof_address = self.to_title_case(validated_data.get('user_prof_address', instance.user_prof_address))
         instance.user_prof_dob = validated_data.get('user_prof_dob', instance.user_prof_dob)
         instance.user_prof_mobile = validated_data.get('user_prof_mobile', instance.user_prof_mobile)
-        instance.user_prof_address = validated_data.get('user_prof_address', instance.user_prof_address)
         instance.save()
 
         return instance
@@ -265,7 +268,7 @@ class UserLoginSerializer(serializers.Serializer):
         if not check_password(validated_data['password'], user.password):
                 raise serializers.ValidationError({'error': 'Incorrect email or password'})
         
-        if not user.is_active:
+        if user and not user.is_active:
             user.is_active = True
             user.save()
         
@@ -373,12 +376,12 @@ class UserGoogleLoginSerializer(serializers.Serializer):
 
             user = UserModel.objects.filter(Q(google_id=google_id) & Q(email = email)).first()
 
+            if not user:
+                raise serializers.ValidationError({'error': 'No user associated with the google found'})
+
             if not user.is_active:
                 user.is_active = True
                 user.save()
-
-            if not user:
-                raise serializers.ValidationError({'error': 'No user associated with the google found'})
             
             return user
 
@@ -499,14 +502,16 @@ class FavoriteMarkSerializer(serializers.ModelSerializer):
         model = Favorite
         fields = '__all__'
 
+
+
 class FollowSerializer(serializers.ModelSerializer):
     class Meta:
         model = Follow
         fields = ['follower_id', 'following_id']
 
-class OrderListingSerializer(serializers.ModelSerializer):
+class ReservationInvoiceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = OrderListing
+        model = ReservationInvoice
         fields = '__all__'
 
 #jolito changes
@@ -539,12 +544,45 @@ class PromoteListingDetailSerializer(serializers.ModelSerializer):
         return None
 
 
+class PayoutSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PayoutRequest
+        fields = ['payout_id', 'payout_paypal_email', 'order_id', 'user_id', 'payout_status', 'payout_created_at', 'payout_updated_at']
+        read_only_fields = ['payout_id', 'payout_status', 'payout_created_at', 'payout_updated_at']
 
+    def validate(self, data):
+        # Check if a payout request already exists for the given order
+        if PayoutRequest.objects.filter(order_id=data['order_id']).exists():
+            raise serializers.ValidationError({'error': 'A payout request for this order already exists.'})
+        
+        order = data['order_id']
+        order = ReservationInvoice.objects.get(order_id=order.order_id)
+        if order.list_id.user_id != self.context['request'].user:
+            raise serializers.ValidationError({'error': 'You are not authorized to request a payout for this order.'})
+
+        return data
+    
+class RefundSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RefundRequest
+        fields = ['refund_id', 'refund_status', 'refund_created_at', 'refund_updated_at', 'order_id', 'user_id']
+        read_only_fields = ['refund_id', 'refund_created_at', 'refund_updated_at']
+
+    def validate(self, data):
+        if RefundRequest.objects.filter(order_id=data['order_id']).exists():
+            raise serializers.ValidationError({'error': 'A refund request for this order already exists.'})
+        
+        order = data['order_id']
+        order = ReservationInvoice.objects.get(order_id=order.order_id)
+        if order.list_id.user_id != self.context['request'].user:
+            raise serializers.ValidationError({'error': 'You are not authorized to request a refund for this order.'})
+
+        return data
 
 class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transaction
-        fields = ['transaction_amount', 'transaction_date', 'transaction_type']
+        fields = '__all__'
 
 class NotificationSerializer(serializers.ModelSerializer):
     triggered_by_profile_pic = serializers.SerializerMethodField()
@@ -581,6 +619,23 @@ class NotificationSerializer(serializers.ModelSerializer):
     
 #jericho's serializers.py
 class RatingSerializer(serializers.ModelSerializer):
+    from_user_id = UserProfileSerializer(source='from_user_id.profile', read_only=True)  # Correctly reference profile
+    rating_value = serializers.FloatField()
+
+    class Meta:
+        model = Rating
+        fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment']
+
+class RatingSerializer(serializers.ModelSerializer):
+    # from_user_id = UserProfileSerializer(source='from_user_id.profile', read_only=True)  # Correctly reference profile
+    rating_value = serializers.FloatField()
+
+    class Meta:
+        model = Rating
+        fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment']
+
+#joselito's cchanges
+class RatingSerializerView(serializers.ModelSerializer):
     from_user_id = UserProfileSerializer(source='from_user_id.profile', read_only=True)  # Correctly reference profile
     rating_value = serializers.FloatField()
 
