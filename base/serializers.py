@@ -31,40 +31,115 @@ class PromoteListingSerializer(serializers.ModelSerializer):
         model = PromoteListing
         fields = ['list_id']  # Adjust fields as necessary
 
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['user_prof_lname', 'user_prof_fname', 'user_prof_gender', 
+                  'user_prof_dob', 'user_prof_mobile', 'user_prof_address', 'user_prof_valid_id', 'user_prof_pic', 'user_prof_valid_pic']
+        read_only_fields = ['user_id', 'user_prof_valid_id', 'user_prof_valid_pic', 'user_prof_pic']
+
+    def validate_user_prof_mobile(self, value):
+        pattern = r'^\+639\d{9}$'
+        
+        if value.startswith('09'):
+            value = '+63' + value[1:]
+        elif value.startswith('9'):
+            value = '+63' + value
+        elif value.startswith('63'):
+            value = '+' + value
+        
+        if not re.match(pattern, value):
+            raise serializers.ValidationError({'error': "Please enter a valid Philippine mobile number in the format +639XXXXXXXXX"})
+        
+        return value
+    
+    def validate(self, attrs):
+        fname = attrs.get('user_prof_fname')
+        lname = attrs.get('user_prof_lname')
+        dob = attrs.get('user_prof_dob')
+        mob = attrs.get('user_prof_mobile')
+        
+        if UserProfile.objects.filter(user_prof_fname=fname, user_prof_lname=lname, user_prof_dob=dob).exists():
+            raise serializers.ValidationError({'error': f"A user profile with the name '{fname} {lname}' and date of birth '{dob}' already exists."})
+        
+        if UserProfile.objects.filter(user_prof_mobile=mob).exists():
+            raise serializers.ValidationError({'error': 'A user with this mobile number already exists.'})
+        
+        return super().validate(attrs)
+
+    def to_title_case(self, value):
+        return value.title() if isinstance(value, str) else value
+
+    def create(self, validated_data):
+        validated_data['user_prof_fname'] = self.to_title_case(validated_data.get('user_prof_fname'))
+        validated_data['user_prof_lname'] = self.to_title_case(validated_data.get('user_prof_lname'))
+        validated_data['user_prof_gender'] = self.to_title_case(validated_data.get('user_prof_gender'))
+        validated_data['user_prof_address'] = self.to_title_case(validated_data.get('user_prof_address'))
+        validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data.get('user_prof_mobile'))
+        validated_data['user_prof_dob'] = validated_data.get('user_prof_dob')
+
+        user = super().create(validated_data)
+        return user
+
+    def update(self, instance, validated_data):
+        if 'user_prof_mobile' in validated_data:
+            validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data['user_prof_mobile'])
+
+        instance.user_prof_fname = self.to_title_case(validated_data.get('user_prof_fname', instance.user_prof_fname))
+        instance.user_prof_lname = self.to_title_case(validated_data.get('user_prof_lname', instance.user_prof_lname))
+        instance.user_prof_gender = self.to_title_case(validated_data.get('user_prof_gender', instance.user_prof_gender))
+        instance.user_prof_address = self.to_title_case(validated_data.get('user_prof_address', instance.user_prof_address))
+        instance.user_prof_dob = validated_data.get('user_prof_dob', instance.user_prof_dob)
+        instance.user_prof_mobile = validated_data.get('user_prof_mobile', instance.user_prof_mobile)
+        instance.save()
+
+        return instance
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField()
     google_id = serializers.CharField(max_length=255, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, required=False)
-    
+    profile = UserProfileSerializer()
+
     class Meta:
         model = UserModel
-        fields = ['id', 'email', 'password', 'google_id', 'is_staff', 'is_reviewer', 'is_assumee', 'is_assumptor']
+        fields = ['id', 'email', 'password', 'google_id', 'is_staff', 'is_reviewer', 'is_assumee', 'is_assumptor', 'profile']
 
     def validate(self, attrs):
         google_id = attrs.get('google_id')
         password = attrs.get('password')
-        
-        if google_id:
-            if UserModel.objects.filter(google_id=google_id).exists():
-                raise serializers.ValidationError('Google account already connected to an existing user.')
-        
-        elif not password:
-            raise serializers.ValidationError('Password is required.')
-        
+        profile_data = attrs.get('profile')
+
+        # Validate profile fields
+        profile_serializer = UserProfileSerializer(data=profile_data)
+        if not profile_serializer.is_valid():
+            raise serializers.ValidationError({"error": profile_serializer.errors})
+
+        # Validate Google ID or password
+        if google_id and UserModel.objects.filter(google_id=google_id).exists():
+            raise serializers.ValidationError({'error': 'Google account already connected to an existing user.'})
+
+        if not google_id and not password:
+            raise serializers.ValidationError({'error': 'Password is required.'})
+
         return attrs
 
+
     def create(self, validated_data):
+        profile_data = validated_data.pop('profile')
+
         email = validated_data['email']
         google_id = validated_data.get('google_id')
         password = validated_data.get('password')
+
         requires_verification = not validated_data.get('is_staff', False) or validated_data.get('is_reviewer', False)
 
         if requires_verification and not google_id:
             try:
                 email_verified_user =  UserVerification.objects.get(user_verification_email=email, user_verification_is_verified=True)
             except UserVerification.DoesNotExist:
-                raise serializers.ValidationError('Email has not been verified yet.')
-            
+                raise serializers.ValidationError({'error': 'Email has not been verified yet.'})
+
         if google_id:
             user_obj = UserModel.objects.create_user(email=email, google_id=google_id)
         else:
@@ -74,16 +149,23 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         user_obj.is_assumee = validated_data.get('is_assumee', False)
         user_obj.is_assumptor = validated_data.get('is_assumptor', False)
         user_obj.is_reviewer = validated_data.get('is_reviewer', False)
+
+        if not user_obj.is_active:
+                user_obj.is_active = True
+
         user_obj.save()
+
+        UserProfile.objects.create(user_id=user_obj, **profile_data)
+        UserApplication.objects.create(user_id=user_obj)
 
         if requires_verification and not google_id:
             email_verified_user.user_id = user_obj
             email_verified_user.save()
 
-        # if user_obj.is_assumptor:
-        #     Wallet.objects.create(user_id=user_obj)
+        if user_obj.is_assumptor:
+            Wallet.objects.create(user_id=user_obj)
 
-        Wallet.objects.create(user_id=user_obj)
+        # Wallet.objects.create(user_id=user_obj)
 
         return user_obj
     
@@ -137,56 +219,6 @@ class AdminRegistrationSerializer(serializers.Serializer):
         except Exception as e:
             raise serializers.ValidationError({'message' :str(e)})
 
-
-class UserProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserProfile
-        fields = ['user_prof_lname', 'user_prof_fname', 'user_prof_gender', 
-                  'user_prof_dob', 'user_prof_mobile', 'user_prof_address', 'user_prof_valid_id', 'user_prof_pic']
-        read_only_fields = ['user_id', 'user_prof_valid_id', 'user_prof_pic']
-
-    def validate_user_prof_mobile(self, value):
-        pattern = r'^\+639\d{9}$'
-        
-        if value.startswith('09'):
-            value = '+63' + value[1:]
-        elif value.startswith('9'):
-            value = '+63' + value
-        elif value.startswith('63'):
-            value = '+' + value
-        
-        if not re.match(pattern, value):
-            raise serializers.ValidationError("Please enter a valid Philippine mobile number in the format +639XXXXXXXXX")
-        
-        return value
-
-    def to_title_case(self, value):
-        return value.title() if isinstance(value, str) else value
-
-    def create(self, validated_data):
-        validated_data['user_prof_fname'] = self.to_title_case(validated_data.get('user_prof_fname'))
-        validated_data['user_prof_lname'] = self.to_title_case(validated_data.get('user_prof_lname'))
-        validated_data['user_prof_gender'] = self.to_title_case(validated_data.get('user_prof_gender'))
-        validated_data['user_prof_address'] = self.to_title_case(validated_data.get('user_prof_address'))
-        validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data.get('user_prof_mobile'))
-
-        user = super().create(validated_data)
-        return user
-
-    def update(self, instance, validated_data):
-        if 'user_prof_mobile' in validated_data:
-            validated_data['user_prof_mobile'] = self.validate_user_prof_mobile(validated_data['user_prof_mobile'])
-
-        instance.user_prof_fname = self.to_title_case(validated_data.get('user_prof_fname', instance.user_prof_fname))
-        instance.user_prof_lname = self.to_title_case(validated_data.get('user_prof_lname', instance.user_prof_lname))
-        instance.user_prof_gender = self.to_title_case(validated_data.get('user_prof_gender', instance.user_prof_gender))
-        instance.user_prof_address = self.to_title_case(validated_data.get('user_prof_address', instance.user_prof_address))
-        instance.user_prof_dob = validated_data.get('user_prof_dob', instance.user_prof_dob)
-        instance.user_prof_mobile = validated_data.get('user_prof_mobile', instance.user_prof_mobile)
-        instance.save()
-
-        return instance
-
 class CheckUserVerifiedSerializer(serializers.Serializer):
     user_verification_email = serializers.EmailField()
 
@@ -209,7 +241,7 @@ class EmailVerificationSerializer(serializers.ModelSerializer):
     
     def check_email(self, email):
         if UserModel.objects.filter(email=email).exists():
-            raise serializers.ValidationError('User with this email already exists.')
+            raise serializers.ValidationError({'error': 'User with this email already exists.'})
         
         verification_record = UserVerification.objects.filter(user_verification_email=email, user_verification_is_verified=False).first()
         if verification_record:
@@ -257,7 +289,13 @@ class UserLoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def check_user(self, validated_data):
+        print('validated_data')
+        print(validated_data)
+        # all_user = UserModel.objects.get()
+        # print(all_user)
         user = UserModel.objects.filter(email=validated_data['email']).first()
+
+        print(validated_data['email'])
 
         if not user:
             raise serializers.ValidationError({'error': 'Incorrect email or password'})
@@ -302,7 +340,7 @@ class PasswordResetSerializer(serializers.Serializer):
             user = UserModel.objects.get(email=email)
             return user
         except UserModel.DoesNotExist:
-            raise serializers.ValidationError('User not found.')
+            raise serializers.ValidationError({'error': 'User not found.'})
     
     def create_token(self, email):
         user = self.check_user(email)
@@ -362,6 +400,9 @@ class UserGoogleLoginSerializer(serializers.Serializer):
     token = serializers.CharField()
 
     def check_user(self, validated_data):
+        print('validated_data')
+        print(validated_data)
+        print('validated_dataaaaaaaaaaa')
         token = validated_data.get('token')
 
         try:
@@ -371,10 +412,17 @@ class UserGoogleLoginSerializer(serializers.Serializer):
             
             id_info = token_auth.verify_oauth2_token(token, requests.Request(), clientId)
 
+            print(id_info)
+
             google_id = id_info['sub']
             email = id_info['email']
 
-            user = UserModel.objects.filter(Q(google_id=google_id) & Q(email = email)).first()
+            print(google_id)
+            print(email)
+
+            user = UserModel.objects.get(email=email, google_id=google_id)
+
+            print(user)
 
             if not user:
                 raise serializers.ValidationError({'error': 'No user associated with the google found'})

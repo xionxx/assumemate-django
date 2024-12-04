@@ -34,6 +34,9 @@ urlpatterns = [
     path('assumptor/<int:user_id>/all/listings/', api_views.AssumptorViewListings.as_view(), name='assumptor-lists'),   #get assumptor's listings (other user viewing)
     path('view/user/inbox/', api_views.UserChatRoomAPIView.as_view(), name='inbox'),    #user's inbox
 
+    path('offer/update/accept-reject/', api_views.AcceptRejectOfferAPIView.as_view(), name='inbox'),    #reject or accept offer , not real time
+    # path('view/user/inbox/', api_views.UserChatRoomAPIView.as_view(), name='inbox'),    #user's inbox
+
     path('view/user/application/', api_views.UserEditApplication.as_view(), name='user-application'),    #user's information for edit rejected application
     path('update/user/application/', api_views.UpdateUserApplication.as_view(), name='user-application'),    #user's information for update rejected application
     
@@ -41,9 +44,9 @@ urlpatterns = [
     path('random/listings/', api_views.RandomListingListView.as_view(), name='random-listing'), #random listiing in detail screen
     path('listings/details/<uuid:list_id>/', api_views.ListingDetailView.as_view(), name='listing_details'),    #listing details
     path('assumptor/on-going/transactions/', api_views.AssumptorCurrentTransaction.as_view(), name='assumptor_transaction'),    #transaction on going assumptor
-    path('assumptor/completed/transactions/', api_views.AssumptorCompleteTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumptor
+    path('assumptor/<str:inv_status>/transactions/', api_views.AssumptorCompleteCancelledTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumptor
     path('assumee/on-going/transactions/', api_views.AssumeeCurrentTransaction.as_view(), name='assumptor_transaction'),    #transaction on going assumee
-    path('assumee/completed/transactions/', api_views.AssumeeCompleteTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumee
+    path('assumee/<str:inv_status>/transactions/', api_views.AssumeeCompleteCancelledTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumee
 
     #joselito
     path('listings/rejected/<uuid:list_id>/', api_views.ListingRejectedDetailView.as_view(), name='listing_rejected'),    #listing rejected
@@ -60,6 +63,7 @@ urlpatterns = [
     path('promote_listing/', api_views.PromoteListingView.as_view(), name='promote-listing'),
     path('promote/', api_views.PromotedListingsView.as_view(), name='promoted'),
     path('update_listing/<uuid:listing_id>/', api_views.UpdateListingAPIView.as_view(), name='update_listing'),
+    path('listings/', api_views.ListingView.as_view(), name='listings'),
 
 
     path('listings/<str:category>/', api_views.ListingByCategoryView.as_view(), name='listings_by_category'),   #feed screen all active listings

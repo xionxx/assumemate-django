@@ -319,6 +319,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     other_offers = Offer.objects.filter(list_id=list_id).exclude(offer_id=offer_id)
                     for other_offer in other_offers:
                         other_offer.offer_status = 'REJECTED'
+                        offer.offer_updated_at = timezone.now().isoformat()
                         other_offer.save()
 
                         message = f'Offer rejected'
@@ -329,7 +330,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'file_type': None
                         }
 
-                        self.save_message(self.user.id, messages, other_offer.user_id.id)
+                        chat_room = ChatRoom.objects.get(
+                        chatroom_user_1=max(self.user, other_offer.user_id, key=lambda u: u.id),
+                        chatroom_user_2=min(self.user, other_offer.user_id, key=lambda u: u.id)
+                            )
+
+                        ChatMessage.objects.create(
+                            sender_id=self.user, chatmess_content=messages, chatroom_id=chat_room)
+                        
+                        chat_room.chatroom_last_message = message
+                        chat_room.save()
 
                 elif offer_status == 'CANCELLED':
                     listing.list_status = 'ACTIVE'
@@ -340,7 +350,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
             
             offer.offer_status = offer_status
-            offer.offer_updated_at = timezone.now
+            offer.offer_updated_at = timezone.now().isoformat()
             offer.save()
 
         except Offer.DoesNotExist:
@@ -355,7 +365,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return ValueError('Cannot change offer amount')
             
             offer.offer_price = offer_amnt
-            offer.offer_updated_at = timezone.now
+            offer.offer_updated_at = timezone.now().isoformat()
             offer.save()
         except Offer.DoesNotExist:
             raise ValueError("Offer does not exist")

@@ -1,4 +1,4 @@
-from .models import UserApplication, Report, ListingApplication
+from .models import PayoutRequest, RefundRequest, UserApplication, Report, ListingApplication
 
 def notification_context(request):
     # Count pending users
@@ -32,3 +32,20 @@ def notification_context(request):
         'notifications': notifications,
         'total_notifications_count': total_notifications_count
     }
+
+
+
+def pending_notifications(request):
+    if request.user.is_authenticated:
+        context = {
+            'pending_listings': ListingApplication.objects.filter(list_app_status='PENDING').count(),
+            'pending_users': UserApplication.objects.filter(user_app_status='PENDING').count(),
+            'pending_reports': Report.objects.filter(report_status='PENDING').count(),
+        }
+        
+        if request.user.is_staff:
+            context['pending_payout'] = PayoutRequest.objects.filter(payout_status='PENDING').count(),
+            context['pending_refund']=RefundRequest.objects.filter(refund_status='PENDING').count(),
+        
+        return context
+    return {}

@@ -87,26 +87,28 @@ class Command(BaseCommand):
                 user_prof_mobile=mobile_number,
                 user_prof_address=f"{fake.street_address()}, {random.choice(cebu_districts)}, Cebu City, Cebu",
                 user_prof_pic=selected_profile_pic,
+                user_prof_valid_pic = selected_profile_pic,
                 user_prof_valid_id=valid_id_images,
             )
 
 
 
             # Create UserVerification
-            UserVerification.objects.create(
-                user_verification_email=email,
-                user_id=user,
-                user_verification_is_verified=random.choice([True, False]),
-                user_verification_expires_at = timezone.now() + timedelta(days=7)
-            )
+            if user.is_assumee or user.is_assumptor:
+                UserVerification.objects.create(
+                    user_verification_email=email,
+                    user_id=user,
+                    user_verification_is_verified=random.choice([True, False]),
+                    user_verification_expires_at = timezone.now() + timedelta(days=7)
+                )
 
-            # Create UserApplication
-            UserApplication.objects.create(
-                user_id=user,
-                user_app_status=random.choice(['PENDING', 'APPROVED', 'REJECTED']),
-                user_app_approved_at=None if random.choice([True, False]) else timezone.now(),
-                user_app_reviewer_id=UserAccount.objects.filter(is_reviewer=True).order_by('?').first(),
-            )
+                # Create UserApplication
+                UserApplication.objects.create(
+                    user_id=user,
+                    user_app_status=random.choice(['PENDING', 'APPROVED', 'REJECTED']),
+                    user_app_approved_at=None if random.choice([True, False]) else timezone.now(),
+                    user_app_reviewer_id=UserAccount.objects.filter(is_reviewer=True).order_by('?').first(),
+                )
 
             
             users = UserAccount.objects.all()  # Get all created users
@@ -219,6 +221,7 @@ class Command(BaseCommand):
                     "Lahug", "Banilad", "Capitol Site", "Talamban",
                     "Mabolo", "Basak", "Pardo", "Guadalupe", "Labangon", "Tisa"
                 ]
+            
 
             if category == 'Real Estate':
                 # Generate data for Real Estate
@@ -226,6 +229,7 @@ class Command(BaseCommand):
                     "year": fake.year(),
                     "price": fake.random_int(min=100000, max=1000000),
                     "title": f"{fake.word()} House in {fake.city()}",
+                    "offer_allowed": random.choice([True, False]),
                     "images": selected_real_estate_images,
                     "lotArea": fake.random_int(min=50, max=1000),
                     "bedrooms": f"{fake.random_int(1, 5)} Bedrooms",
@@ -243,6 +247,8 @@ class Command(BaseCommand):
                     "numberOfMonthsPaid": fake.random_int(min=1, max=60)
                 }
 
+                list_content["reservation"] = float(int(list_content["price"] * fake.random.uniform(0.1, 0.5)))
+
             elif category == 'Motorcycle':
                 make = random.choice(motorcycle_makes)
                 model = random.choice(motorcycle_models)
@@ -253,6 +259,7 @@ class Command(BaseCommand):
                     "model": model,
                     "price": fake.random_int(min=5000, max=20000),
                     "title": f"{make} {model} {fake.year()}",
+                    "offer_allowed": random.choice([True, False]),
                     #"title" : fake.vehicle_year_make_model(),
                     "images": selected_motor_images,
                     "mileage": f"{fake.random_int(min=100000, max=150000)} km",
@@ -269,6 +276,8 @@ class Command(BaseCommand):
                     "numberOfMonthsPaid": fake.random_int(min=1, max=60)
                 }
 
+                list_content["reservation"] = list_content["price"] * fake.random.uniform(0.1, 0.5)
+
             elif category == 'Car':
                 make = random.choice(car_makes)
                 model = random.choice(car_models)
@@ -279,6 +288,7 @@ class Command(BaseCommand):
                     "model": model,
                     "price": fake.random_int(min=5000, max=50000),
                     "title": f"{make} {model} {fake.year()}",
+                    "offer_allowed": random.choice([True, False]),
                     #"title" : fake.vehicle_year_make_model(),
                     "images": selected_images,  # 15 images
                     "address": fake.address(),
@@ -296,21 +306,24 @@ class Command(BaseCommand):
                     "numberOfMonthsPaid": fake.random_int(min=1, max=60)
                 }
 
+                list_content["reservation"] = list_content["price"] * fake.random.uniform(0.1, 0.5)
+
             # Generate a random duration for the listing (e.g., 1-30 days from now)
             list_duration = timezone.now() + timedelta(days=fake.random_int(1, 30))
 
             # Create the Listing instance
-            if hasattr(user, 'is_assumptor') and user.is_assumptor:  # Adjust field name based on your model
-                listing = Listing.objects.create(
-                    list_id=uuid.uuid4(),
-                    list_content=list_content,
-                    list_status=fake.random_element(elements=[status[0] for status in Listing.STATUS_CHOICES]),
-                    list_duration=list_duration,
-                    user_id=user   # Linking listing to the user
-                )
-                print(f"Listing created for assumptor: {user}")
-            else:
-                print(f"User {user} is not an assumptor, skipping listing creation.")
+            assumptor_users = UserAccount.objects.filter(is_assumptor=True)
+            if not assumptor_users.exists():
+                print("No assumptor users available.")
+                continue
+
+            new_listing = Listing.objects.create(
+                list_id=uuid.uuid4(),
+                list_content=list_content,
+                list_status=fake.random_element(elements=[status[0] for status in Listing.STATUS_CHOICES]),
+                list_duration=list_duration,
+                user_id=random.choice(UserAccount.objects.filter(is_assumptor=True))   # Linking listing to the user
+            )
 
 
             listing = Listing.objects.order_by('?').first()  # Randomly pick a listing

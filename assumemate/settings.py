@@ -137,6 +137,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'base.middleware.CheckSuspensionMiddleware', 
 ]
 
 ROOT_URLCONF = 'assumemate.urls'
@@ -152,6 +153,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'base.context_processors.pending_notifications',
             ],
         },
     },
@@ -172,6 +174,14 @@ DATABASES = {
         'HOST': os.getenv('DB_HOST')
     }
 }
+
+TEST_USE_LIVE_DATABASE = True  # Temporary flag
+
+if TEST_USE_LIVE_DATABASE:
+    DATABASES['default']['TEST'] = {
+        'MIRROR': 'default',  # Use the real database for testing
+    }
+
 
 
 # Password validation

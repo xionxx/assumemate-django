@@ -48,6 +48,7 @@ urlpatterns = [
     path('rejectreport/<int:report_id>/', views.reject_report, name='reject_report'),
     path('Reviewer/ViewReport/<int:report_id>/', views.report_detail_view, name='report_detail_view'),
     path('Admin/PlatformReport/', views.platform_report, name='platform_report'),
+    path('revenue-details/', views.revenue_details, name='revenue_details'),
 
     #JOSELITO
     path("list/admin/", views.admin_acc_list, name="admin_acc_list"),
@@ -62,6 +63,8 @@ urlpatterns = [
     path('admin?/deactivate/<int:user_id>/', views.toggle_user_status, {'user_type': 'admin?', 'status': False}, name='admin_deactivate'),
     path('reviewers?/activate/<int:user_id>/', views.toggle_user_status, {'user_type': 'reviewer', 'status': True}, name='reviewer_activate'),
     path('reviewers?/deactivate/<int:user_id>/', views.toggle_user_status, {'user_type': 'reviewer', 'status': False}, name='reviewer_deactivate'),
+
+    # path('/notifications', views.notifications_view, name='notifications_view'),
 ]
 
 if settings.DEBUG:

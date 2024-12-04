@@ -273,7 +273,7 @@
         }).always(function () {
             $('#loading-icon').hide();
             $("#register_upperuser").prop("disabled", false);
-    });
+        });
     });
 
     function showMessage(message, type) {
@@ -336,6 +336,33 @@ input.addEventListener("input", function() {
         }
     }
 });
+
+function setMaxDOB() {
+        const dobInput = document.getElementById("dob");
+        const today = new Date();
+        
+        // Calculate the date 18 years ago
+        const minDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+        dobInput.max = minDate.toISOString().split("T")[0];
+    }
+
+    // Call the function on page load
+    document.addEventListener("DOMContentLoaded", setMaxDOB);
+
+    // Additional validation on form submission
+    document.getElementById("register_reviewer").addEventListener("click", function(event) {
+        const dobInput = document.getElementById("dob");
+        const dob = new Date(dobInput.value);
+        const minDate = new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate());
+
+        if (dob > minDate) {
+            event.preventDefault();
+            showMessage("Date of Birth must be at least 18 years in the past.", 'danger');
+        } else if (dob > new Date()) {
+            event.preventDefault();
+            showMessage("Date of Birth cannot be in the future.", 'danger');
+        }
+    });
 
 // Hide suggestions on input blur with a delay
 input.addEventListener('blur', function() {

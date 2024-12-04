@@ -57,14 +57,17 @@ class UserAccount(AbstractUser):
         db_table = 'user_account'
 
 class UserProfile(models.Model):
-    user_prof_fname = models.CharField(max_length=50)
-    user_prof_lname = models.CharField(max_length=50)
-    user_prof_gender = models.CharField(max_length=6)
-    user_prof_dob = models.DateField()
-    user_prof_mobile = models.CharField(max_length=13)
+    DEFAULT_PROFILE_PIC = 'https://res.cloudinary.com/dbroe2hjh/image/upload/v1733245571/no-profile_xnyyoi.jpg'
+
+    user_prof_fname = models.CharField(max_length=50, null=False, blank=False)
+    user_prof_lname = models.CharField(max_length=50, null=False, blank=False)
+    user_prof_gender = models.CharField(max_length=6, null=False, blank=False)
+    user_prof_dob = models.DateField(null=False, blank=False)
+    user_prof_mobile = models.CharField(max_length=13, unique=True)
     user_prof_address = models.CharField(max_length=255)
-    user_prof_pic = models.URLField(null=True, blank=True)
-    user_prof_valid_id = models.URLField(null=True, blank=True)
+    user_prof_pic = models.URLField(default=DEFAULT_PROFILE_PIC)
+    user_prof_valid_pic = models.URLField(default=DEFAULT_PROFILE_PIC)
+    user_prof_valid_id = models.URLField(null=False, blank=False)
     user_id = models.OneToOneField(UserAccount, null=False, primary_key=True, editable=False, on_delete=models.CASCADE, db_column='user_id', related_name='profile')
 
     def __str__(self):
@@ -72,6 +75,9 @@ class UserProfile(models.Model):
 
     class Meta:
         db_table = 'user_profile'
+        constraints = [
+            # models.UniqueConstraint(fields=['user_prof_fname', 'user_prof_lname', 'user_prof_dob'], name='unique_user'),
+        ]
 
 class UserVerification(models.Model):
     user_verification_id = models.BigAutoField(primary_key=True, editable=False)
@@ -117,7 +123,7 @@ class Listing(models.Model):
     list_content = models.JSONField(null=True, blank=True)
     list_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     list_duration = models.DateTimeField(null=True, blank=True) 
-    user_id = models.ForeignKey(UserAccount, null=True, blank=True, on_delete=models.PROTECT, db_column='user_id', related_name='listing')
+    user_id = models.ForeignKey(UserAccount, null=False, blank=False, on_delete=models.PROTECT, db_column='user_id', related_name='listing')
 
     def __str__(self):
         return str(self.list_id)
@@ -252,8 +258,29 @@ class SuspendedUser(models.Model):
     sus_start = models.DateTimeField(auto_now_add=True)
     sus_end = models.DateTimeField()
 
+    def save(self, *args, **kwargs):
+        """Custom save method to set sus_end to 20 years if user_id >= 3."""
+        # Check if user_id is greater than or equal to 3
+        if self.user_id.id >= 3:
+            self.sus_end = timezone.now() + timedelta(days=20 * 365)  # 20 years
+        super().save(*args, **kwargs)  # Save the instance
+
+
+        user = self.user_id  
+        user.is_active = False  
+        user.save() 
+
+    def is_active(self):
+            """Check if the suspension is still active."""
+            if self.sus_end <= timezone.now():
+                # If the suspension has expired, lift it (delete the record)
+                self.delete()
+                return False  # Return False because the suspension has ended
+            return True
+    
     def __str__(self):
         return f"User {self.user_id} is suspended from {self.sus_start} to {self.sus_end}"
+
 
 class ListingApplication(models.Model):
     STATUS_CHOICES = [
@@ -322,12 +349,12 @@ class Offer(models.Model):
     ]
 
     offer_id = models.BigAutoField(primary_key=True, editable=False)
-    offer_price = models.DecimalField(max_digits=12, decimal_places=2, null=True)
+    offer_price = models.DecimalField(max_digits=12, decimal_places=2, null=False)
     offer_status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING')
-    offer_created_at = models.DateTimeField(auto_now_add=True, null=True)
-    offer_updated_at = models.DateTimeField(auto_now=True, null=True)
-    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, null=True, db_column='list_id', related_name='offer')
-    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, null=True, db_column='user_id', related_name='offer')
+    offer_created_at = models.DateTimeField(auto_now_add=True)
+    offer_updated_at = models.DateTimeField(auto_now=True)
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='list_id', related_name='offer')
+    user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, db_column='user_id', related_name='offer')
 
     class Meta:
         db_table = 'offer'
@@ -414,45 +441,86 @@ class Offer(models.Model):
 
     def update_offer_status(self, new_status):
         try:
-            offer_status_message = f"Your offer of {self.offer_price} for the listing has been {new_status.lower()}."
-            Notification.objects.create(
-                notif_message=offer_status_message,
-                recipient=self.user_id,
-                list_id=self.list_id,
-                triggered_by=self.list_id.user_id,
-                notification_type='offer_status',
-            )
-
-            if new_status == "CANCELLED":
-                fcm_token = self.list_id.user_id.fcm_token  
-                if fcm_token:
-                    user_profile = self.user_id.profile 
-
-                    offer_message = (
-                    f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
-                    f"has {new_status.lower()} his offer ₱ {self.offer_price} for the listing."
+            if new_status == "CANCELLED" or new_status == "PAID":
+                offer_status_message = f"The offer of {self.offer_price} for the listing has been {new_status.lower()}."
+                Notification.objects.create(
+                    notif_message=offer_status_message,
+                    recipient=self.list_id.user_id,
+                    list_id=self.list_id,
+                    triggered_by=self.user_id,
+                    notification_type='offer',
                 )
-            else:
-                fcm_token = self.user_id.fcm_token 
-                if fcm_token:
-                    user_profile = self.list_id.user_id.profile 
+                if new_status == "CANCELLED": #if si assumee mu cancel (to assumptor)
+                    fcm_token = self.list_id.user_id.fcm_token  
+                    if fcm_token:
+                        user_profile = self.user_id.profile 
+                        new_title = 'Cancelled Offer'
+                        offer_message = (
+                        f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
+                        f"has {new_status.lower()} his offer ₱ {self.offer_price} for the listing."  
+                    )
+                if new_status == "PAID" : #if si ASSUMEE mu bayad (to assumptor)
+                    fcm_token = self.list_id.user_id.fcm_token  
+                    if fcm_token:
+                        user_profile = self.list_id.user_id.profile 
+                        new_title = 'Paid Offer'
+                        offer_message = (
+                        f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
+                        f"has {new_status.lower()} your offer ₱ {self.offer_price} for the listing."
+                    )
 
-                    offer_message = (
-                    f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
-                    f"has {new_status.lower()} your offer ₱ {self.offer_price} for the listing."
+            if new_status == "REJECTED" or new_status =="ACCEPTED":
+                offer_status_message = f"Your offer of {self.offer_price} for the listing has been {new_status.lower()}."
+                Notification.objects.create(
+                    notif_message=offer_status_message,
+                    recipient=self.user_id,
+                    list_id=self.list_id,
+                    triggered_by=self.list_id.user_id,
+                    notification_type='offer',
                 )
+                if new_status == "REJECTED" : #if si ASSUMPTOR MUCANCEL/ACCEPTED (to assumee)
+                    fcm_token = self.user_id.fcm_token  
+                    if fcm_token:
+                        user_profile = self.user_id.profile 
+                        new_title = 'Rejected Offer'
+                        offer_message = (
+                        f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
+                        f"has {new_status.lower()} your offer ₱ {self.offer_price} for the listing."
+                    )
+                        
+                if new_status =="ACCEPTED": #if si ASSUMPTOR ACCEPTED (to assumee)
+                    fcm_token = self.user_id.fcm_token  
+                    if fcm_token:
+                        user_profile = self.user_id.profile 
+                        new_title = 'Accepted Offer'
+                        offer_message = (
+                        f"{user_profile.user_prof_fname} {user_profile.user_prof_lname} "
+                        f"has {new_status.lower()} your offer ₱ {self.offer_price} for the listing."
+                    )
+
+                    
             if fcm_token:
-                route = f"ws/chat/{user_profile.user_id.id}/$"
-                print(f"Debug: Sending follow push notification with route: {route}")
+                if new_status == "CANCELLED" or new_status == "PAID":
+                    route = f"ws/chat/{user_profile.user_id.id}/$"
+                    print(f"Debug: Sending follow push notification with route: {route}")
 
-                data_payload = {
-                    "route": route,
-                    "userId": str(user_profile.user_id.id),
-                }
+                    data_payload = {
+                        "route": route,
+                        "userId": str(user_profile.user_id.id),
+                    }
+                else:
+                    route = f"ws/chat/{self.list_id.user_id}/$"
+                    print(f"Debug: Sending follow push notification with route: {route}")
+
+                    data_payload = {
+                        "route": route,
+                        "userId": str(self.list_id.user_id.id),
+                    }
+
 
                 send_push_notification(
                     fcm_token=fcm_token,
-                    title="New Offer",
+                    title=new_title,
                     body=offer_message,
                     data_payload=data_payload,
                 )
@@ -478,10 +546,10 @@ class ChatRoom(models.Model):
 
 class ChatMessage(models.Model):
     chatmess_id = models.BigAutoField(primary_key=True, editable=False)
-    chatmess_content = models.JSONField(null=True, blank=True) # charfield for now
+    chatmess_content = models.JSONField(null=False, blank=False) # charfield for now
     chatmess_created_at = models.DateTimeField(auto_now_add=True)
     chatmess_is_read = models.BooleanField(default=False)
-    sender_id = models.ForeignKey(UserAccount, on_delete=models.PROTECT, null=True, related_name='messages', db_column='user_id')
+    sender_id = models.ForeignKey(UserAccount, on_delete=models.PROTECT, null=False, related_name='messages', db_column='user_id')
     chatroom_id = models.ForeignKey(ChatRoom, on_delete=models.PROTECT, null=False, related_name='messages', db_column='chatroom_id')
 
     class Meta:

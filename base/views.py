@@ -23,7 +23,7 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.views.decorators.http import require_POST
 from django.contrib import messages
-from django.db.models import Q, Count, Avg, Count, F
+from django.db.models import Q, Count, Avg, Count, F, Value, Sum, DecimalField
 from .permissions import IsAdminUser
 from .models import *
 from rest_framework import viewsets, status, permissions
@@ -33,6 +33,7 @@ from django.template.loader import render_to_string
 from rest_framework.response import Response
 from django.db.models.functions import ExtractMonth
 from django.core.files.base import ContentFile
+from django.db.models import Sum, F, Case, When, FloatField, Count, ExpressionWrapper
 from django.contrib.auth import login as login, authenticate, logout, get_user_model, update_session_auth_hash
 
 load_dotenv()
@@ -177,7 +178,7 @@ def upperuser_register(request, user_type):
 
             profile = UserProfile.objects.create(user_prof_fname=fname, user_prof_lname=lname, user_prof_gender=gender, 
                                                  user_prof_dob=dob, user_prof_mobile=mobile, user_prof_address=address, 
-                                                 user_prof_pic=image_json, user_id=user)
+                                                 user_prof_pic=image_json, user_prof_valid_pic=image_json, user_id=user)
             
             profile.save()
             try:
@@ -324,6 +325,7 @@ def assumemate_rev_report_users(request):
 @login_required
 def user_detail_view(request, user_id):
     user = get_object_or_404(UserAccount, pk=user_id)
+    print(user.profile.user_prof_valid_pic)
     return render(request, 'base/user_detail.html', {'user': user})
 
 @login_required
@@ -474,8 +476,44 @@ def reject_report(request, report_id):
 
 @login_required
 def report_detail_view(request, report_id):
+    # Fetch the report object
     userreport = get_object_or_404(Report, pk=report_id)
-    return render(request, 'base/report_detail.html', {'userreport': userreport})
+    
+    # Extract reporter_id and reported_user_id from the JSON field in report_details
+    reporter_id = userreport.report_details.get('reporter_id', None)
+    reported_user_id = userreport.report_details.get('reported_user_id', None)
+    
+    # Fetch the UserAccount and Profile for the reporter
+    user = None
+    user_profile = None
+    if reporter_id:
+        try:
+            user = UserAccount.objects.get(id=reporter_id)
+            user_profile = user.profile  # Access the related profile
+        except UserAccount.DoesNotExist:
+            user = None
+            user_profile = None
+
+    # Fetch the UserAccount and Profile for the reported user
+    reported_user = None
+    reported_user_profile = None
+    if reported_user_id:
+        try:
+            reported_user = UserAccount.objects.get(id=reported_user_id)
+            reported_user_profile = reported_user.profile  # Access the related profile
+        except UserAccount.DoesNotExist:
+            reported_user = None
+            reported_user_profile = None
+
+    # Pass both the reporter and reported user profiles to the template context
+    return render(request, 'base/report_detail.html', {
+        'userreport': userreport,
+        'user': user,
+        'user_profile': user_profile,
+        'reported_user': reported_user,
+        'reported_user_profile': reported_user_profile
+    })
+
 
 @login_required
 def platform_report(request):
@@ -832,6 +870,7 @@ def accept_listing(request, list_app_id):
 
         if not existing_listings.exists():
             listing.list_status = 'ACTIVE' 
+            listing.list_duration = timezone.now() + timedelta(days=30)
         else:
             listing.list_status = 'PENDING'  
 
@@ -932,22 +971,61 @@ def reject_user(request, user_id):
         user_application.user_app_reviewer_id = request.user
         user_application.save()
 
-    user_account = user_application.user_id
-    fcm_token = user_account.fcm_token  
-    if fcm_token:
+        user_account = user_application.user_id
+        fcm_token = user_account.fcm_token 
 
-        title = 'Application Rejected'
-        message = 'Your user application has been rejected.'
-        data_payload = {  
-                'application_status': 'REJECTED',  
-            }
-        send_push_notification(fcm_token, title, message, data_payload)
+        if fcm_token:
+
+            title = 'Application Rejected'
+            message = 'Your user application has been rejected.'
+            data_payload = {  
+                    'application_status': 'REJECTED',  
+                }
+            send_push_notification(fcm_token, title, message, data_payload=data_payload)
 
         messages.success(request, 'User application has been rejected.')
         return redirect('pending_accounts_view')
 
     messages.error(request, 'Invalid request method.')
     return redirect('pending_accounts_view')
+
+@login_required
+def revenue_details(request):
+    # Filter the relevant transactions for 'RESERVATION' or 'PAYOUT' types
+    transactions = Transaction.objects.filter(transaction_type__in=['RESERVATION', 'PAYOUT'])
+
+    # Perform the annotations and calculations with explicit output_field for each operation
+    revenue_data = transactions.annotate(
+        paypal_fee=ExpressionWrapper(
+            F('transaction_amount') * 0.0349, 
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        ),
+        fixed_fee=Case(
+            When(transaction_type="RESERVATION", then=Value(25)),
+            default=Value(12.5),
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        ),
+        platform_share=ExpressionWrapper(
+            F('transaction_amount') * 0.05,
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        )
+    ).annotate(
+        # Define the output_field for the revenue calculation
+        revenue=ExpressionWrapper(
+            F('platform_share') - F('paypal_fee') - F('fixed_fee'),
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        )
+    )
+
+    # Sum up the total revenue
+    total_revenue = revenue_data.aggregate(total_revenue=Sum('revenue'))['total_revenue'] or 0
+
+    context = {
+        'revenue_data': revenue_data,
+        'total_revenue': total_revenue,
+    }
+
+    return render(request, 'base/revenue_details.html', context)
 
 @login_required
 def accept_report(request, report_id):
@@ -996,6 +1074,7 @@ def reject_report(request, report_id):
 
 
  #JOSELITO
+
 @login_required
 def dashboard(request):
     profiles = UserProfile.objects.filter(
@@ -1068,6 +1147,36 @@ def dashboard(request):
     else:
         suspended_user_percentage = 0
 
+    transactions = Transaction.objects.filter(
+        transaction_type__in=["RESERVATION", "PAYOUT"]
+    ).annotate(
+        paypal_fee=ExpressionWrapper(
+            F('transaction_amount') * 0.0349, 
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        ),
+        fixed_fee=Case(
+            When(transaction_type="RESERVATION", then=Value(25)),
+            default=Value(12.5),
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        ),
+        platform_share=ExpressionWrapper(
+            F('transaction_amount') * 0.05, 
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        )
+    ).annotate(
+        revenue=ExpressionWrapper(
+            F('platform_share') - F('paypal_fee') - F('fixed_fee'),
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        )
+    )
+
+    # Calculate total revenue
+    total_revenue = transactions.aggregate(total_revenue=Sum('revenue'))['total_revenue'] or 0
+    print('Total Revenue: ' + str(total_revenue))
+
+
+
+
     # Pass the counts to the template context
     context = {
         'real_estate_count': real_estate_count,
@@ -1090,6 +1199,7 @@ def dashboard(request):
         'suspended_user_count': suspended_user_count,
         'approved_reports': approved_reports,
         'pending_reports': pending_reports,
+        'total_revenue': round(total_revenue, 2),  # Add revenue here
         'nav': 'home'
     }
     return render(request, 'base/dashboard.html', context)
@@ -1129,7 +1239,7 @@ def toggle_user_status(request, user_id, user_type, status):
 @user_passes_test(is_admin)
 def payout_requests_lists(request):
     payout_requests = PayoutRequest.objects.all()  # Fetch all payout requests
-    return render(request, 'base/payout_requests.html', {'payout_requests': payout_requests})
+    return render(request, 'base/payout_requests.html', {'payout_requests': payout_requests, 'nav': 'payout'})
 
 @login_required
 @user_passes_test(is_admin)
@@ -1138,7 +1248,7 @@ def payout_requests_details(request, payout_id):
         payout_details = PayoutRequest.objects.get(payout_id=payout_id)  # Fetch all payout requests
         payout_details.payout_fee = float(payout_details.order_id.order_price) * 0.05
         payout_details.payout_amount_after_fee = float(payout_details.order_id.order_price) * 0.95
-        return render(request, 'base/payout_request_details.html', {'payout_details': payout_details})
+        return render(request, 'base/payout_request_details.html', {'payout_details': payout_details, 'nav': 'payout'})
     except PayoutRequest.DoesNotExist:
         return
     
@@ -1169,6 +1279,22 @@ def get_captured_payment(capture_id):
         return response.json()
     else:
         return None
+    
+# @login_required
+# def notifications_view(request):
+
+#     pending_listings = ListingApplication.objects.filter(list_app_status='PENDING').count()
+#     pending_users = UserApplication.objects.filter(user_app_status='PENDING').count()
+#     pending_reports = Report.objects.filter(report_status='PENDING').count()
+
+#     # Pass data to the template
+#     context = {   
+#         'pending_listings': pending_listings,
+#         'pending_users': pending_users,
+#         'pending_reports': pending_reports,
+#     }
+# 
+#     return render(request, 'base.html', context)
 
 @login_required
 @user_passes_test(is_admin)
@@ -1250,7 +1376,14 @@ def send_payout(request, payout_id):
 
     except Exception as e:
         print(str(e))
-        return JsonResponse({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({'error': f'An error occured: {e}'}, status=status.HTTP_400_BAD_REQUEST)
 
     # payout_requests = PayoutRequest.objects.all()  # Fetch all payout requests
     # return render(request, 'base/payout_request_details.html', {'payout_requests': payout_requests})
+
+# def send_refund(request, refund_id):
+#     try:
+#         refund = RefundRequest.objects.get(refund_id=refund_id)
+
+#         trans = Transaction.objects.get(order_id=refund.order_id)
+

@@ -5,9 +5,10 @@
 
 <div class="container mt-3">
     <!-- Page Title -->
-    <div class="row mb-2">
-        <div class="col text-center">
-            <h3 class="fw-bold">Payout Request Details</h3>
+                <div class="row mb-2">
+                <div class="col text-center">
+                <div id="msg" class="" role="alert"></div>
+                <h3 class="fw-bold mt-2">Payout Request Details</h3>
             <hr class="w-25 mx-auto">
         </div>
     </div>
@@ -65,8 +66,8 @@
                     <a href="{% url 'payout_requests' %}" class="btn btn-secondary">Back to List</a>
                     {% if payout_details.payout_status == 'PENDING' %}
                     <div>
-                        <a href="{% url 'approve_payout' payout_details.payout_id %}" id="approve-btn" class="btn btn-success me-2" data-payout-id="">Approve</button>
-                        <button id="reject-btn" class="btn btn-danger" data-payout-id="">Reject</button>
+                        <a href="{% url 'approve_payout' payout_details.payout_id %}" id="approve-btn" class="btn btn-success me-2" data-payout-id="">Approve <span id="loading-icon" class="spinner-border text-light spinner-border-sm" role="status" aria-hidden="true" style="display: none; margin-right: 3px;"></span></button>
+                        <a id="reject-btn" class="btn btn-danger" data-payout-id="">Reject</a>
                     </div>
                     {% endif %}
                 </div>
@@ -74,5 +75,46 @@
         </div>
     </div>
 </div>
+
+<script>
+    $("#approve-btn").click(function (event) {
+        event.preventDefault();
+        // var formURL = $("#approve-btn").data('url');
+        var csrf = '{{csrf_token}}';
+        
+        const payoutId = $(this).data('payout-id');
+        const url = $(this).attr('href');
+
+        $('#loading-icon').show();
+
+        $.post(url, {
+            csrfmiddlewaretoken: csrf,
+        })
+        .done (function (response) {
+            location.reload();
+            showMessage(response.message, 'success');
+        })
+        .fail(function (jqXHR) {
+            if (jqXHR.status === 400) {
+                const errorResponse = JSON.parse(jqXHR.responseText);
+                showMessage(errorResponse.error || "An error occurred.", 'danger');
+            } else {
+                showMessage("An unexpected error occurred.", 'danger');
+            }
+        }).always(function () {
+            $('#loading-icon').hide();
+            $("#register_upperuser").prop("disabled", false);
+        });
+    });
+
+    function showMessage(message, type) {
+        $("#msg").stop(true, true).fadeOut(0, function() {
+            $(this).text(message)
+                .removeClass('alert-danger alert-success')
+                .addClass(`p-1 text-center alert alert-${type}`)
+                .fadeIn(300);
+        }).fadeOut(3000);
+    }
+</script>
 
 {% endblock content %}

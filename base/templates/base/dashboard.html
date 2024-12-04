@@ -27,7 +27,9 @@
             <div class="col-md-6">
                 <div class="revenue-box">
                 <p class="revenue-title" style="margin-top: 40px;">Revenue</p><br>    
-                <p class="revenue-amount">₱84,198</p>
+                <a href="{% url 'revenue_details' %}">
+                    <p class="revenue-amount">₱{{ total_revenue|floatformat:2 }}</p>
+                </a>
                 </div>
             </div>
         </div>

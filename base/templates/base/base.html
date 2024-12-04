@@ -82,7 +82,7 @@
                                     </a>
                                 </li>
                                 <li class="sidebar-item">
-                                    <a href="/list/reviewer" class="sidebar-link {% if nav == 'refund' %}active{% endif %}">
+                                    <a href="/refund-requests" class="sidebar-link {% if nav == 'refund' %}active{% endif %}">
                                         <i class="fa-solid fa-user-shield pe-2"></i>
                                         Refund Requests
                                     </a>
@@ -144,13 +144,61 @@
                     <div class="dropdown">
                         <a class="text-light" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Notifications">
                             <i class="fas fa-bell" style="font-size: 20px; color: #4a8af0"></i>
-                          
                         </a>
                         <div class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationDropdown">
-                            <!-- Notification List Dropdown Content -->
                             <div id="notification-list" class="notification-list">
                                 <h6 class="item-title">Notifications</h6>
-                            
+                                <ul class="list-unstyled p-2">
+                                    {% if  request.user.is_authenticated and request.user.is_reviewer %}
+                                        {% if pending_listings > 0 %}
+                                        <li class="dropdown-item d-flex justify-content-between align-items-center">
+                                            <a href="{% url 'assumemate_rev_pending_list' %}" class="text-decoration-none text-dark">
+                                                <span>Pending Listings</span>
+                                                <span class="badge bg-warning">{{ pending_listings }}</span>
+                                            </a>
+                                        </li>
+                                        {% endif %}
+                                        
+                                        {% if pending_users > 0 %}
+                                        <li class="dropdown-item d-flex justify-content-between align-items-center">
+                                            <a href="{% url 'pending_accounts_view' %}" class="text-decoration-none text-dark">
+                                                <span>Pending Users</span>
+                                                <span class="badge bg-danger">{{ pending_users }}</span>
+                                            </a>
+                                        </li>
+                                        {% endif %}
+                                        
+                                        {% if pending_reports > 0 %}
+                                        <li class="dropdown-item d-flex justify-content-between align-items-center">
+                                            <a href="{% url 'assumemate_rev_report_users' %}" class="text-decoration-none text-dark">
+                                            <span>Pending Reports</span>
+                                            <span class="badge bg-info">{{ pending_reports }}</span>
+                                        </li>
+                                        {% endif %}
+
+                                        {% if pending_listings == 0 and pending_users == 0 and pending_reports == 0 and pending_payout == 0 %}
+                                            <li class="text-muted">No pending notifications</li>
+                                        {% endif %}
+                                    {% endif %}
+
+                                    {% if request.user.is_authenticated and request.user.is_staff %}
+                                        {% if pending_payout > 0 %}
+                                        <li class="dropdown-item d-flex justify-content-between align-items-center">
+                                            <a href="{% url 'payout_requests' %}" class="text-decoration-none text-dark"></a>
+                                            <span>Pending Payouts</span>
+                                            <span class="badge bg-success">{{ pending_payout }}</span>
+                                        </li>
+                                        {% endif %}
+                                        {% if pending_refund > 0 %}
+                                        <li class="dropdown-item d-flex justify-content-between align-items-center">
+                                            <a href="{% url 'refund_requests' %}" class="text-decoration-none text-dark"></a>
+                                            <span>Pending Payouts</span>
+                                            <span class="badge bg-success">{{ pending_payout }}</span>
+                                        </li>
+                                        {% endif %}
+                                    {% endif %}
+
+                                </ul>
                             </div>
                         </div>
                     </div>
