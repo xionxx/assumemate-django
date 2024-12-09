@@ -124,7 +124,6 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
         return attrs
 
-
     def create(self, validated_data):
         profile_data = validated_data.pop('profile')
 
@@ -420,7 +419,7 @@ class UserGoogleLoginSerializer(serializers.Serializer):
             print(google_id)
             print(email)
 
-            user = UserModel.objects.get(email=email, google_id=google_id)
+            user = UserModel.objects.filter(email=email, google_id=google_id).first()
 
             print(user)
 

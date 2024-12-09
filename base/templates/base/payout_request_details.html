@@ -67,7 +67,6 @@
                     {% if payout_details.payout_status == 'PENDING' %}
                     <div>
                         <a href="{% url 'approve_payout' payout_details.payout_id %}" id="approve-btn" class="btn btn-success me-2" data-payout-id="">Approve <span id="loading-icon" class="spinner-border text-light spinner-border-sm" role="status" aria-hidden="true" style="display: none; margin-right: 3px;"></span></button>
-                        <a id="reject-btn" class="btn btn-danger" data-payout-id="">Reject</a>
                     </div>
                     {% endif %}
                 </div>

@@ -47,6 +47,7 @@ urlpatterns = [
     path('assumptor/<str:inv_status>/transactions/', api_views.AssumptorCompleteCancelledTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumptor
     path('assumee/on-going/transactions/', api_views.AssumeeCurrentTransaction.as_view(), name='assumptor_transaction'),    #transaction on going assumee
     path('assumee/<str:inv_status>/transactions/', api_views.AssumeeCompleteCancelledTransaction.as_view(), name='assumptor_transaction'),    #transaction completed assumee
+    path('confirm/buy-now/order/', api_views.ConfirmBuyOrder.as_view()), #confrim buy now order
 
     #joselito
     path('listings/rejected/<uuid:list_id>/', api_views.ListingRejectedDetailView.as_view(), name='listing_rejected'),    #listing rejected

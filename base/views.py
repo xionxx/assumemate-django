@@ -1328,7 +1328,7 @@ def send_payout(request, payout_id):
 
             payout_data = {
                 "sender_batch_header": {
-                    "sender_batch_id": f"payout_trial-{payout_id}",
+                    "sender_batch_id": f"payout_assumemate-{payout_id}",
                     "email_subject": "You have a payout from Assumemate!"
                 },
                 "items": [

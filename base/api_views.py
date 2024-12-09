@@ -881,30 +881,66 @@ class AssumptorListOffers(APIView):
 
         except Exception as e:
             return Response({'error': f'Unexpected error occured: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class ConfirmBuyOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
 
+    def put(self, request):
+        try:
+            order_id = request.data.get('order_id')
+
+            if not order_id:
+                return Response({'error': 'Order ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            order = ReservationInvoice.objects.get(order_id=order_id)
+            order.order_status = 'PENDING'
+            order.save()
+
+            ReservationInvoice.objects.filter(list_id=order.list_id).exclude(order_id=order.order_id).update(order_status='CANCELLED')
+
+            return Response({'message': 'Order confirmed'}, status=status.HTTP_200_OK)
+        except ReservationInvoice.DoesNotExist:
+            return Response({'error': 'Order does not exist'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': f'Unexpected error occured: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 class CreateOrder(APIView):
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
     def post(self, request):
         try:
-            user = request.user
             offer_id = request.data.get('offer_id')
             amount = request.data.get('amount')
             user_id = request.data.get('user_id')
-            offer = Offer.objects.get(offer_id=offer_id)
-            # amount = offer.offer_price
-            list_id = offer.list_id
+            list_id = request.data.get('list_id')
 
-            statuses = ['COMPLETED', 'CANCELLED']
+            listing = Listing.objects.get(list_id=list_id)
+            user = UserModel.objects.get(id=user_id)
 
+            offer = None
+            if offer_id:
+                try:
+                    offer = Offer.objects.get(offer_id=offer_id)
+                except Offer.DoesNotExist:
+                    return Response({'error': 'Offer does not exist.'}, status=status.HTTP_404_NOT_FOUND)
+
+            statuses = ['COMPLETED', 'CANCELLED', 'FOR CONFIRMATION']
             if ReservationInvoice.objects.filter(list_id=list_id).exclude(order_status__in=statuses).exists():
                 return Response({'error': 'There is an existing order for this listing'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            order_status = 'PENDING' if offer else "FOR CONFIRMATION"
+            
+            inv = ReservationInvoice.objects.create(order_price=amount, order_status=order_status, offer_id=None, list_id=listing, user_id=user)
 
-            inv = ReservationInvoice.objects.create(order_price=amount, offer_id=offer, list_id=list_id, user_id=offer.user_id)
             inv_serializer = ReservationInvoiceSerializer(inv)
 
             return Response({'message': 'Offer accepted', 'order': inv_serializer.data}, status=status.HTTP_201_CREATED)
+        except Listing.DoesNotExist:
+            return Response({'error': 'Listing not found'}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             print(e)
             return Response({'error': f'Error creating order: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -960,8 +996,7 @@ class GetOrder(APIView):
             listing_owner = UserProfile.objects.get(user_id=listing.user_id)
             prof_serializer = UserProfileSerializer(listing_owner).data
 
-            if order.offer_id:
-                order_serializer['offer_price'] = order.offer_id.offer_price
+            order_serializer['offer_price'] = order.offer_id.offer_price if order.offer_id else None
 
             if order.order_status == 'PAID':
                 trans = Transaction.objects.get(order_id=order.order_id)
@@ -2561,7 +2596,7 @@ class AssumptorCurrentTransaction(APIView):
         print(request.user)
         try:
             user = request.user
-            statuses = ['PENDING', 'PAID']
+            statuses = ['PENDING', 'PAID', 'FOR CONFIRMATION']
 
             listings = Listing.objects.filter(user_id=user.id)
 
@@ -2653,7 +2688,7 @@ class AssumeeCurrentTransaction(APIView):
         print(request.user)
         try:
             user = request.user
-            statuses = ['PENDING', 'PAID']
+            statuses = ['PENDING', 'PAID', 'FOR CONFIRMATION']
 
             print('ari na dapit')
             
