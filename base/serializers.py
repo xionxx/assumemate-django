@@ -615,13 +615,23 @@ class RefundSerializer(serializers.ModelSerializer):
         fields = ['refund_id', 'refund_status', 'refund_created_at', 'refund_updated_at', 'order_id', 'user_id']
         read_only_fields = ['refund_id', 'refund_created_at', 'refund_updated_at']
 
+    def create(self, validated_data):
+        try:
+            # Attempt to create the refund request and handle unique constraint error explicitly
+            return super().create(validated_data)
+        except IntegrityError as e:
+            # Handle unique constraint error for `order_id`
+            if 'order_id' in str(e):
+                raise serializers.ValidationError({'error': ['A refund request for this order already exists.']})
+            raise e
+
     def validate(self, data):
-        if RefundRequest.objects.filter(order_id=data['order_id']).exists():
-            raise serializers.ValidationError({'error': 'A refund request for this order already exists.'})
+        try:
+            order = ReservationInvoice.objects.get(order_id=data['order_id'].order_id)
+        except ReservationInvoice.DoesNotExist:
+            raise serializers.ValidationError({'error': 'Order does not exist.'})
         
-        order = data['order_id']
-        order = ReservationInvoice.objects.get(order_id=order.order_id)
-        if order.list_id.user_id != self.context['request'].user:
+        if order.user_id != self.context['request'].user:
             raise serializers.ValidationError({'error': 'You are not authorized to request a refund for this order.'})
 
         return data

@@ -36,32 +36,30 @@
             </div>
             <div class="d-flex mt-1 px-3 justify-content-between">
                 <div class="row mt-2">
-                    <p class="h4">Payout Requests <span class="h5 font-weight-bold text-primary">{{ payout_requests|length }}</span></p>
+                    <p class="h4">refund Requests <span class="h5 font-weight-bold text-primary">{{ refund_requests|length }}</span></p>
                 </div>
             </div>
             <br>
             <div class="col px-2 pt-1">
-                <table id="payout_table" class="table table-sm table-bordered" width="100%">
+                <table id="refund_table" class="table table-sm table-bordered" width="100%">
                     <thead>
                         <tr>
-                            <th class="fs-9 text-center" width="15%">Payout ID</th>
+                            <th class="fs-9 text-center" width="15%">refund ID</th>
                             <th class="fs-9 text-center" width="15%">User ID</th>
-                            <th class="fs-9 text-center" width="25%">PayPal Email</th>
                             <th class="fs-9 text-center" width="15%">Status</th>
                             <th class="fs-9 text-center" width="20%">Created At</th>
                             <th class="fs-9 text-center" width="25%">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for payout in payout_requests %}
+                        {% for refund in refund_requests %}
                             <tr>
-                                <td class="marquee">{{ payout.payout_id }}</td>
-                                <td class="marquee">{{ payout.user_id.id }}</td>
-                                <td class="marquee">{{ payout.payout_paypal_email }}</td>
-                                <td class="marquee">{{ payout.payout_status }}</td>
-                                <td class="marquee">{{ payout.payout_created_at|date:"Y-m-d H:i A" }}</td>
+                                <td class="marquee">{{ refund.refund_id }}</td>
+                                <td class="marquee">{{ refund.user_id.id }}</td>
+                                <td class="marquee">{{ refund.refund_status }}</td>
+                                <td class="marquee">{{ refund.refund_created_at|date:"Y-m-d H:i A" }}</td>
                                 <td class="marquee">
-                                    <a href="{% url 'view_payout_request_details' payout.payout_id %}" class="btn btn-sm btn-info">
+                                    <a href="{% url 'view_refund_request_details' refund.refund_id %}" class="btn btn-sm btn-info">
                                         <i class="fa-regular fa-eye"></i>
                                     </a>
                                 </td>
@@ -80,50 +78,4 @@
 <script src='https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js'></script>
 <script src='https://cdn.datatables.net/responsive/2.1.0/js/dataTables.responsive.min.js'></script>
 <script src='https://cdn.datatables.net/1.13.5/js/dataTables.bootstrap5.min.js'></script>
-
-<script>
-    $("#send_payout").click(function (event) {
-        event.preventDefault();
-        var formURL = $("#send_payout").data('url');
-        var csrf = '{{csrf_token}}';
-        
-
-    });
-
-    async function sendPayout(payoutId) {
-        const button = document.getElementById(`send-btn-${payoutId}`);
-        const statusCell = document.getElementById(`status-${payoutId}`);
-        
-        // Disable the button to prevent multiple clicks
-        button.disabled = true;
-        button.textContent = 'Processing...';
-
-        try {
-            const response = await fetch(`/send-payout/${payoutId}/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}', // Pass CSRF token from the template
-                    'Content-Type': 'application/json',
-                },
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                alert(result.message);
-                statusCell.textContent = 'SENT';
-            } else {
-                const errorData = await response.json();
-                alert(`Error: ${errorData.error}`);
-            }
-        } catch (error) {
-            console.error('Error sending payout:', error);
-            alert('An unexpected error occurred.');
-        } finally {
-            // Re-enable the button in case of failure
-            button.disabled = false;
-            button.textContent = 'Send Payout';
-        }
-    }
-</script>
-
 {% endblock content %}

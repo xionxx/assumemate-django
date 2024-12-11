@@ -7,7 +7,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 import requests, base64, cloudinary
 from django.core.files.base import ContentFile
-from .models import ChatRoom, ChatMessage, Offer, Listing
+from .models import ChatRoom, ChatMessage, Offer, Listing, ReservationInvoice
 
 from django.contrib.auth import get_user_model
 UserModel = get_user_model()
@@ -315,8 +315,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 
                 if offer_status == 'ACCEPTED':
                     listing.list_status = 'RESERVED'
-
-                    other_offers = Offer.objects.filter(list_id=list_id).exclude(offer_id=offer_id)
+                    
+                    ReservationInvoice.objects.filter(list_id=list_id).exclude(offer_id__offer_id=offer.offer_id).update(order_status='CANCELLED')
+                    other_offers = Offer.objects.filter(list_id=list_id, offer_status='PENDING').exclude(offer_id=offer_id)
                     for other_offer in other_offers:
                         other_offer.offer_status = 'REJECTED'
                         offer.offer_updated_at = timezone.now().isoformat()

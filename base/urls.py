@@ -17,7 +17,9 @@ urlpatterns = [
     path('payout-requests/', views.payout_requests_lists, name='payout_requests'),
     path('view/payout-requests/<int:payout_id>/', views.payout_requests_details, name='view_payout_request_details'),
     path('approve_payout/<int:payout_id>/', views.send_payout, name='approve_payout'),
-    path('reject_payout/<int:payout_id>/', views.payout_requests_lists, name='reject_payout'),
+    path('refund-requests/', views.refund_requests_lists, name='refund-requests'),
+    path('view/refund-request/<int:refund_id>/', views.view_refund_request_details, name='view_refund_request_details'),
+    path('send-refund/<int:refund_id>/', views.send_refund, name='send_refund'),
 
     path('activate/<int:admin_id>/', views.usertype_is_active, {'status': True}, name='is_activate'),
     path('deactivate/<int:admin_id>/', views.usertype_is_active, {'status': False}, name='is_deactivate'),
@@ -31,7 +33,7 @@ urlpatterns = [
     path('reset-password/update/', views.reset_password, name='reset-password'),
     path('reset-password/done/', views.reset_pass_done, name='reset-password-done'),
 
-    path('user/onboarded/', views.paypal_return_link, name='onboard_success'),
+    # path('user/onboarded/', views.paypal_return_link, name='onboard_success'),
     # path('', views.paypal_return_link, name='onboard_success'),
 
      #jericho

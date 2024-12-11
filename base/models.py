@@ -906,13 +906,11 @@ class RefundRequest(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
         ('REFUNDED', 'Approved'),
-        ('REJECTED', 'Rejected'),
-        # ('CANCELLED', 'Cancelled'),
-        ('COMPLETED', 'Completed'),
     ]
 
     refund_id = models.BigAutoField(primary_key=True, editable=False, null=False, db_column='refund_id')
     refund_status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING')
+    paypal_refund_id = models.CharField(max_length=255, null=True, blank=True)
     refund_created_at = models.DateTimeField(auto_now_add=True, null=False)
     refund_updated_at = models.DateTimeField(auto_now=True, null=False)
     order_id = models.OneToOneField(ReservationInvoice, blank=False, null=False, on_delete=models.PROTECT, db_column='order_id', related_name='refund_request')

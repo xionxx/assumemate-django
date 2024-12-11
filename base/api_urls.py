@@ -39,6 +39,7 @@ urlpatterns = [
 
     path('view/user/application/', api_views.UserEditApplication.as_view(), name='user-application'),    #user's information for edit rejected application
     path('update/user/application/', api_views.UpdateUserApplication.as_view(), name='user-application'),    #user's information for update rejected application
+    path('add/user/type/', api_views.AddUserType.as_view(), name='user-type-add'),    #be assumee and assumptor
     
     path('add/listings/', api_views.CarListingCreate.as_view(), name='car-listing-create'), #assumptor create listing
     path('random/listings/', api_views.RandomListingListView.as_view(), name='random-listing'), #random listiing in detail screen
@@ -95,7 +96,9 @@ urlpatterns = [
     path('complete/transaction/<int:order_id>/', api_views.MarkCompleteTransaction.as_view(), name='complete_transaction'), #view transaction details
     path('mark/sold/<int:order_id>/', api_views.MarkSoldListing.as_view(), name='sold_listing'), #mark lsiting as sold after transaction is complete
     path('request/payout/', api_views.RequestPayout.as_view(), name='request_payout'), #mark lsiting as sold after transaction is complete
-    path('get/request/payout/<int:order_id>/', api_views.PayoutView.as_view(), name='view_request_payout'), #mark lsiting as sold after transaction is complete
+    path('get/request/payout/<int:order_id>/', api_views.PayoutView.as_view(), name='view_request_payout'), #view payout request details
+    path('request/refund/', api_views.RequestRefund.as_view()), #request refund if assumptor cancel paid order
+    path('get/request/refund/<int:order_id>/', api_views.RefundView.as_view()), #view refund details
 
     # SEAN
     path('create-paypal-order/', api_views.CreatePaypalOrder.as_view(), name='create_paypal_order'),    #create order for top-up

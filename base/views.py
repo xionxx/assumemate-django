@@ -1280,6 +1280,28 @@ def get_captured_payment(capture_id):
     else:
         return None
     
+@login_required
+@user_passes_test(is_admin)
+def refund_requests_lists(request):
+    refund_requests = RefundRequest.objects.all()  # Fetch all payout requests
+    return render(request, 'base/refund_requests.html', {'refund_requests': refund_requests, 'nav': 'refund'})
+
+@login_required
+@user_passes_test(is_admin)
+def view_refund_request_details(request, refund_id):
+    try:
+        print('refund_id')
+        print(refund_id)
+        refund = RefundRequest.objects.get(refund_id=refund_id)  # Fetch all payout requests
+        refund.refund_fee = float(refund.order_id.order_price) * 0.037
+        refund.refund_amount_after_fee = float(refund.order_id.order_price) - refund.refund_fee
+        print(refund)
+        return render(request, 'base/refund_request_details.html', {'refund': refund, 'nav': 'refund'})
+    except RefundRequest.DoesNotExist:
+        print(refund_id)
+        print('1refund_id')
+        return
+    
 # @login_required
 # def notifications_view(request):
 
@@ -1328,7 +1350,7 @@ def send_payout(request, payout_id):
 
             payout_data = {
                 "sender_batch_header": {
-                    "sender_batch_id": f"payout_assumemate-{payout_id}",
+                    "sender_batch_id": f"payout_assumemate-revision-{payout_id}",
                     "email_subject": "You have a payout from Assumemate!"
                 },
                 "items": [
@@ -1381,9 +1403,77 @@ def send_payout(request, payout_id):
     # payout_requests = PayoutRequest.objects.all()  # Fetch all payout requests
     # return render(request, 'base/payout_request_details.html', {'payout_requests': payout_requests})
 
-# def send_refund(request, refund_id):
-#     try:
-#         refund = RefundRequest.objects.get(refund_id=refund_id)
+@login_required
+@user_passes_test(is_admin)
+def send_refund(request, refund_id):
+    try:
+        refund = RefundRequest.objects.get(refund_id=refund_id)
 
-#         trans = Transaction.objects.get(order_id=refund.order_id)
+        trans = Transaction.objects.get(order_id=refund.order_id)
+
+        paypal_capture_id = trans.transaction_paypal_capture_id
+
+        if not paypal_capture_id:
+            return JsonResponse({'error': 'Captured ID from PayPal not found'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        captured = get_captured_payment(paypal_capture_id)
+
+        if not captured:
+            return JsonResponse({'error': 'Failed to retrieve capture details from PayPal.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+        cap_amnt = captured['amount']['value']
+        refund_amount = float(cap_amnt) * 0.963
+
+        # print(cap_amnt)
+        # print(refund_amount)
+        
+        payout_url = f'{baseURL}/v2/payments/captures/{paypal_capture_id}/refund'
+        access = get_paypal_access_token()
+        headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {access}',
+                "Accept": "application/json"
+            }
+
+        refund_data = {
+                "amount": {
+                    "currency_code": "PHP",
+                    "value": str(refund_amount)
+                },
+                "note_to_payer": "Refund for cancelled transaction"
+            }
+        
+        response = req.post(payout_url, headers=headers, json=refund_data)
+
+        # print('response YAWAA')
+        # print(response)
+        # print(response.status_code)
+        # print(response.content)
+
+        response.raise_for_status()
+
+        if response.status_code == 201:
+            refund.refund_status = 'REFUNDED'
+            refund.paypal_refund_id = response.json()['id']  # Save PayPal refund ID if needed
+            refund.save()
+            print(response)
+            
+            transaction = Transaction.objects.create(
+                user_id=request.user,
+                transaction_amount=refund_amount,
+                transaction_type='REFUND',
+                transaction_date=timezone.now(),
+            )
+
+            return JsonResponse({'message': 'Refund sent!'}, status=status.HTTP_200_OK)
+        else:
+            print(response.raise_for_status())
+            return JsonResponse({'error': 'Failed to process payout. PayPal error.'}, status=status.HTTP_400_BAD_REQUEST)
+    except RefundRequest.DoesNotExist:
+        return JsonResponse({'error': 'Refund request not found'}, status=status.HTTP_400_BAD_REQUEST) 
+    except Transaction.DoesNotExist:
+        return JsonResponse({'error': 'Transaction not found'}, status=status.HTTP_400_BAD_REQUEST) 
+    except Exception as e:
+        return JsonResponse({'error': f'An error occured: {e}'}, status=status.HTTP_400_BAD_REQUEST) 
 

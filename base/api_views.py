@@ -379,9 +379,10 @@ class GetUserProfile(APIView):
     def get(self, request):
         try:
             user_profile = UserProfile.objects.get(user_id=request.user.id)
-            prof_serializer = UserProfileSerializer(user_profile)
+            prof_serializer = UserProfileSerializer(user_profile).data
+            prof_serializer['email'] = request.user.email
 
-            return Response({'user_profile': prof_serializer.data}, status=status.HTTP_200_OK)
+            return Response({'user_profile': prof_serializer}, status=status.HTTP_200_OK)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -757,17 +758,17 @@ class AcceptRejectOfferAPIView(APIView):
                 offer.offer_status = 'REJECTED'
             elif offer_status == 'accepted':
 
-                statuses = ['COMPLETED', 'CANCELLED']
+                statuses = ['COMPLETED', 'CANCELLED', 'FOR CONFIRMATION']
 
                 if ReservationInvoice.objects.filter(list_id=offer.list_id).exclude(order_status__in=statuses).exists():
                     return Response({'error': 'There is an existing order for this listing'}, status=status.HTTP_400_BAD_REQUEST)
 
                 offer.offer_status = 'ACCEPTED'
-                
 
                 offer.list_id.list_status = 'RESERVED'
-
-                other_offers = Offer.objects.filter(list_id=offer.list_id).exclude(offer_id=offer_id)
+                offer.list_id.save()
+                ReservationInvoice.objects.filter(list_id=offer.list_id).exclude(offer_id__offer_id=offer.offer_id).update(order_status='CANCELLED')
+                other_offers = Offer.objects.filter(list_id=offer.list_id, offer_status='PENDING').exclude(offer_id=offer.offer_id)
                 for other_offer in other_offers:
                     other_offer.offer_status = 'REJECTED'
                     other_offer.offer_updated_at = timezone.now().isoformat()
@@ -892,12 +893,17 @@ class ConfirmBuyOrder(APIView):
 
             if not order_id:
                 return Response({'error': 'Order ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
 
             order = ReservationInvoice.objects.get(order_id=order_id)
             order.order_status = 'PENDING'
             order.save()
 
+            order.list_id.list_status = 'RESERVED'
+            order.list_id.save()
+
             ReservationInvoice.objects.filter(list_id=order.list_id).exclude(order_id=order.order_id).update(order_status='CANCELLED')
+            Offer.objects.filter(list_id=order.list_id).update(offer_status='REJECTED')
 
             return Response({'message': 'Order confirmed'}, status=status.HTTP_200_OK)
         except ReservationInvoice.DoesNotExist:
@@ -912,6 +918,7 @@ class CreateOrder(APIView):
     def post(self, request):
         try:
             offer_id = request.data.get('offer_id')
+            print(offer_id)
             amount = request.data.get('amount')
             user_id = request.data.get('user_id')
             list_id = request.data.get('list_id')
@@ -932,7 +939,7 @@ class CreateOrder(APIView):
             
             order_status = 'PENDING' if offer else "FOR CONFIRMATION"
             
-            inv = ReservationInvoice.objects.create(order_price=amount, order_status=order_status, offer_id=None, list_id=listing, user_id=user)
+            inv = ReservationInvoice.objects.create(order_price=amount, order_status=order_status, offer_id=offer, list_id=listing, user_id=user)
 
             inv_serializer = ReservationInvoiceSerializer(inv)
 
@@ -996,7 +1003,10 @@ class GetOrder(APIView):
             listing_owner = UserProfile.objects.get(user_id=listing.user_id)
             prof_serializer = UserProfileSerializer(listing_owner).data
 
-            order_serializer['offer_price'] = order.offer_id.offer_price if order.offer_id else None
+            offer = order.offer_id
+
+            if offer:
+                order_serializer['offer_price'] = order.offer_id.offer_price if order.offer_id else None
 
             if order.order_status == 'PAID':
                 trans = Transaction.objects.get(order_id=order.order_id)
@@ -2553,6 +2563,17 @@ class TransactionDetails(APIView):
             listing = Listing.objects.get(list_id=str(order.list_id))
             list_serializer = ListingSerializer(listing).data
 
+            if order.order_status == 'CANCELLED':
+                if Transaction.objects.filter(order_id=order.order_id).exists():
+                    trans = Transaction.objects.get(order_id=order.order_id)
+                    trans_serializer = TransactionSerializer(trans).data
+
+                    if RefundRequest.objects.filter(order_id=order.order_id).exists():
+                        refund = RefundRequest.objects.get(order_id=order.order_id)
+                        trans_serializer['refund'] = RefundSerializer(refund).data
+
+                    return Response({ 'transaction': trans_serializer, 'order': order_serializer, 'listing': list_serializer}, status=status.HTTP_200_OK)
+
             if order.order_status not in ['PAID', 'COMPLETED']:
                 return Response({'order': order_serializer, 'listing': list_serializer}, status=status.HTTP_200_OK)
 
@@ -2785,14 +2806,23 @@ class RequestRefund(APIView):
         data = request.data.copy()
         data['user_id'] = user.id
 
-        serializers = PayoutSerializer(data=data, context={'request': request})
+        print(data)
 
-        if serializers.is_valid(raise_exception=True):
-            serializers.save()
-            
-            return Response({'payout': serializers.data}, status=status.HTTP_201_CREATED)
-        print(serializers.errors)
-        return Response({'error': str(serializers.errors)}, status=status.HTTP_400_BAD_REQUEST)
+        if 'order_id' not in data:
+            return Response({'error': 'Order ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+        serializer = RefundSerializer(data=data, context={'request': request})
+        
+        try:
+            if serializer.is_valid(raise_exception=False):
+                serializer.save()
+                return Response({'refund': serializer.data}, status=status.HTTP_201_CREATED)
+
+        except serializers.ValidationError as e:
+            return Response({'error': e.detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RequestPayouts(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -2810,4 +2840,64 @@ class RequestPayouts(APIView):
             return Response({'payout': serializers.data}, status=status.HTTP_201_CREATED)
         print(serializers.errors)
         return Response({'error': str(serializers.errors)}, status=status.HTTP_400_BAD_REQUEST)
-    
+
+class RefundView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]  
+
+    def get(self, request, order_id):
+        user = request.user
+
+        print(order_id)
+
+        try:
+            refund = RefundRequest.objects.filter(user_id=user.id, order_id=order_id).first()
+
+            if not refund:
+                return Response({'payout': {}}, status=status.HTTP_200_OK)
+
+            serializers = RefundSerializer(refund)
+
+            if serializers:
+                data = serializers.data
+                profile = UserProfile.objects.get(user_id=refund.user_id)
+                data['req_by'] = f'{profile.user_prof_fname} {profile.user_prof_lname}'
+                data['refund_amnt'] = float(refund.order_id.order_price)
+                data['fee'] = float(refund.order_id.order_price) * .037
+                data['tot_refund'] = float(refund.order_id.order_price) - data['fee']
+
+                print(data)
+                
+                return Response({'refund': data}, status=status.HTTP_200_OK)
+            # print(serializers.errors)
+            return Response({'error': str(serializers.errors)}, status=status.HTTP_400_BAD_REQUEST)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class AddUserType(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def patch(self, request):
+        user = request.user
+        print(request.data)
+        try:
+            
+            if not 'is_assumptor' in request.data and not 'is_assumee' in request.data:
+                print('yawasaw')
+                return Response({'error': 'Incorrect data passed'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if 'is_assumptor' in request.data:
+                user.is_assumptor = request.data.get('is_assumptor')
+
+            if 'is_assumee' in request.data:
+                user.is_assumee = request.data.get('is_assumee')
+            print('here?')
+            user.save()
+
+            return Response({'message': 'Role added successfully!'}, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
