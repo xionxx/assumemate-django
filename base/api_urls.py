@@ -4,13 +4,12 @@ from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from . import api_views
 from . import paypal_views
-from .api_views import MyTokenObtainPairView, RateUserView, RatingsView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
     path('user-register/', api_views.UserRegister.as_view(), name='user-register'), #register user
     path('login/', api_views.UserLogin.as_view(), name='login'),    #login
-    path('token/', MyTokenObtainPairView.as_view(), name='token-obtain-pair'), #generate tokenn
+    path('token/', api_views.MyTokenObtainPairView.as_view(), name='token-obtain-pair'), #generate tokenn
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'), #generate refresh token
     path('logout/', api_views.UserLogout.as_view(), name='logout'),     # logout, way gamit
     path('create-profile/', api_views.UserCreateProfile.as_view(), name='create-profile'),  #create profile
@@ -35,7 +34,6 @@ urlpatterns = [
     path('view/user/inbox/', api_views.UserChatRoomAPIView.as_view(), name='inbox'),    #user's inbox
 
     path('offer/update/accept-reject/', api_views.AcceptRejectOfferAPIView.as_view(), name='inbox'),    #reject or accept offer , not real time
-    # path('view/user/inbox/', api_views.UserChatRoomAPIView.as_view(), name='inbox'),    #user's inbox
 
     path('view/user/application/', api_views.UserEditApplication.as_view(), name='user-application'),    #user's information for edit rejected application
     path('update/user/application/', api_views.UpdateUserApplication.as_view(), name='user-application'),    #user's information for update rejected application
@@ -81,8 +79,8 @@ urlpatterns = [
     path('follow/mark/', api_views.ListFollowing.as_view(), name='list_followings'),    #followinga list
     path('follower/list/', api_views.ListFollower.as_view(), name='list_follower'), #followers list
     path('send/report/', api_views.ReportView.as_view(), name='send_report'),   #send report
-    path('rate/', RateUserView.as_view(), name='rate_user'), #send rate
-    path('view/rate', RatingsView.as_view(), name='rate_views'),  #view rate
+    path('rate/', api_views.GiveRate.as_view(), name='rate_user'), #send rate
+    path('view/rate', api_views.RatingsView.as_view(), name='rate_views'),  #view rate
 
     path('paypal/onboard/', paypal_views.PaypalOnboard.as_view(), name='paypal_onboard'),   #link paypal
     path('create/order/', api_views.CreateOrder.as_view(), name='create_order'), #create order for offer or buy
@@ -124,8 +122,3 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)                    
-
-# {
-# "email": "kangpatricia96@gmail.com",
-# "password": "tokunoyushi2004"
-# }

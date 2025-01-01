@@ -2344,7 +2344,7 @@ def remove_fcm_token(request):
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 #jericho's rating update
-class RateUserView(APIView):
+class GiveRate(APIView):
     serializer_class = RatingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -2367,32 +2367,20 @@ class RateUserView(APIView):
         except Http404:
             return Response({"detail": "No user found with the provided 'to_user_id'."},
                             status=status.HTTP_404_NOT_FOUND)
-
-        # Check if a rating already exists
-        rating_instance = Rating.objects.filter(from_user_id=from_user, to_user_id=to_user).first()
-
-        # If a rating exists, update it
-        if rating_instance:
-            serializer = self.serializer_class(rating_instance, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()  # Update the existing rating
-                print("Rating updated:", serializer.data)  # Debug: print the updated rating instance
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            print("Serializer errors:", serializer.errors)  # Debug: print serializer errors
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         # If no rating exists, create a new one
         request.data['from_user_id'] = from_user.id
-        request.data['to_user_id'] = to_user_id
+        request.data['list_id'] = request.data.get('list_id') if request.data.get('list_id') else None
+        # request.data['to_user_id'] = to_user_id
         serializer = self.serializer_class(data=request.data)
 
         if serializer.is_valid():
             rating = serializer.save()  # Save the new rating instance
             print("Rating created:", rating)  # Debug: print the created rating instance
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return JsonResponse(serializer.data, status=status.HTTP_201_CREATED)
 
         print("Serializer errors:", serializer.errors)  # Debug: print serializer errors
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RatingsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -2869,7 +2857,6 @@ class RefundView(APIView):
                 print(data)
                 
                 return Response({'refund': data}, status=status.HTTP_200_OK)
-            # print(serializers.errors)
             return Response({'error': str(serializers.errors)}, status=status.HTTP_400_BAD_REQUEST)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -2882,19 +2869,19 @@ class AddUserType(APIView):
 
     def patch(self, request):
         user = request.user
-        print(request.data)
         try:
             
             if not 'is_assumptor' in request.data and not 'is_assumee' in request.data:
                 print('yawasaw')
                 return Response({'error': 'Incorrect data passed'}, status=status.HTTP_400_BAD_REQUEST)
-
-            if 'is_assumptor' in request.data:
+            
+            if user.is_assumee:
                 user.is_assumptor = request.data.get('is_assumptor')
+                Wallet.objects.create(user_id=user)
 
-            if 'is_assumee' in request.data:
+            elif user.is_assumptor:
                 user.is_assumee = request.data.get('is_assumee')
-            print('here?')
+                
             user.save()
 
             return Response({'message': 'Role added successfully!'}, status=status.HTTP_200_OK)

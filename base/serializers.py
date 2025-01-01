@@ -435,79 +435,6 @@ class UserGoogleLoginSerializer(serializers.Serializer):
         except ValueError as e:
             raise serializers.ValidationError({'error': f'Invalid token: {e}'})
 
-
-# class GoogleSignInCheckSerializer(serializers.Serializer):
-#     google_id = serializers.CharField(max_length=255, required=False)
-#     email = serializers.EmailField(required=False)
-
-#     def validate(self, attrs):
-#         if not attrs.get('google_id') and not attrs.get('email'):
-#             raise serializers.ValidationError('Google ID and Email are required.')
-
-#         return attrs
-
-#     def check_email(self):
-#         google_id = self.validated_data.get('google_id')
-#         email = self.validated_data.get('email')
-
-#         user = None
-#         if google_id:
-#             user = UserModel.objects.filter(google_id=google_id).first()
-        
-#         if email:
-#             user = UserModel.objects.filter(email=email).first()
-
-#         exists = user is not None
-
-#         return exists, self.validated_data
-
-# class GoogleSignInCheckSerializer(serializers.Serializer):
-#     token = serializers.CharField()
-
-#     def validate(self, attrs):
-#         token = attrs.get('token')
-#         id_info = self.validate_token(token)
-        
-#         attrs['google_id'] = id_info.get('sub')
-#         attrs['email'] = id_info.get('email')
-
-#         print(attrs['google_id'])
-
-#         return attrs
-
-#     def validate_token(self, token):
-#         clientId = os.getenv('CLIENT_ID')
-        
-#         try:
-#             request = requests.Request()
-            
-#             id_info = token_auth.verify_oauth2_token(token, request, clientId)
-#             print(id_info)
-        
-#             email = id_info.get('email')
-#             google_id = id_info.get('sub')
-
-#             print(google_id)
-
-#             if 'email' not in id_info or 'sub' not in id_info:
-#                 raise serializers.ValidationError("Token is missing required fields.")
-
-#             return id_info
-#         except ValueError:
-#             raise serializers.ValidationError("Invalid ID token")
-
-#     def check_email(self):
-#         google_id = self.validated_data.get('google_id')
-#         email = self.validated_data.get('email')
-
-#         print(google_id)
-
-#         user = UserModel.objects.filter(google_id=google_id).first() or UserModel.objects.filter(email=email).first()
-
-#         exists = user is not None
-
-#         return exists, self.validated_data
-
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
@@ -530,7 +457,6 @@ class WalletSerializer(serializers.ModelSerializer):
         read_only_fields=['user_id']
 
 class ListingSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Listing
         fields = '__all__' # Include other fields as necessary
@@ -689,20 +615,24 @@ class RatingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Rating
-        fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment']
+        fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment', 'list_id']
+
+    # def create(self, validated_data):
+    #     list_id = None
+    #     if validated_data['list_id']:
+    #         list_id = validated_data['list_id']
+        
 
 #joselito's cchanges
 class RatingSerializerView(serializers.ModelSerializer):
     from_user_id = UserProfileSerializer(source='from_user_id.profile', read_only=True)  # Correctly reference profile
+    list_id = ListingSerializer(read_only=True, required=False, allow_null=True)
     rating_value = serializers.FloatField()
 
     class Meta:
         model = Rating
-        fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment']
+        fields = ['from_user_id', 'to_user_id', 'rating_value', 'review_comment', 'list_id']
 
-
-###############################
-###############################
 class OfferSerializer(serializers.ModelSerializer):
     class Meta:
         model = Offer

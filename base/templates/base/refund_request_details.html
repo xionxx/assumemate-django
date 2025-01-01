@@ -75,10 +75,8 @@
 <script>
     $("#send-btn").click(function (event) {
         event.preventDefault();
-        // var formURL = $("#approve-btn").data('url');
         var csrf = '{{csrf_token}}';
         
-        // const refund_id = $(this).data('refund-id');
         const url = $(this).attr('href');
 
         $('#loading-icon').show();

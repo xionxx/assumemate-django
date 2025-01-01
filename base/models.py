@@ -321,7 +321,7 @@ class ListingApplication(models.Model):
 
 class Wallet(models.Model):    
     user_id = models.OneToOneField(UserAccount, primary_key=True, editable=False, on_delete=models.PROTECT, db_column='user_id')
-    wall_amnt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    wall_amnt = models.IntegerField(default=0)
 
     def __str__(self):
         return f"User {self.user_id} wallet: {self.wall_amnt} coins"
@@ -923,13 +923,13 @@ class Rating(models.Model):
     rate_id = models.BigAutoField(primary_key=True, editable=False)
     from_user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='ratings_given', db_column='from_user_id')
     to_user_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name='ratings_received', db_column='to_user_id')
+    list_id = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name='ratings', db_column='list_id', null=True)
     rating_value = models.IntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5')])  # Example 1-5 rating scale
     review_comment = models.TextField(null=True, blank=True)  # Optional comment for the rating
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'rating'
-        unique_together = ['from_user_id', 'to_user_id'] 
 
     def __str__(self):
         return f"Rating from {self.from_user_id.email} to {self.to_user_id.email}: {self.rating_value}"
