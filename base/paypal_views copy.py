@@ -2,8 +2,9 @@ import base64
 from django.http import JsonResponse
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import  permissions, status
+from django.db import transaction
 from rest_framework.response import Response
-import requests
+import requests as req
 import os
 from .models import *
 from rest_framework.views import APIView
@@ -13,18 +14,18 @@ from dotenv import load_dotenv
 load_dotenv()
 UserModel = get_user_model()
 
-client_id = os.getenv('PARTNER_CLIENT_ID')
-secret_key = os.getenv('PARTNER_SECRET_KEY')
+client_id = os.getenv('PAYPAL_CLIENT_ID')
+secret_key = os.getenv('PAYPAL_CLIENT_SECRET')
 baseURL = os.getenv('PAYPAL_BASE_URL')
 
 
 def get_paypal_access_token():
-    url = "https://api-m.sandbox.paypal.com/v1/oauth2/token"
+    url = f"{baseURL}/v1/oauth2/token"
     headers = {"Accept": "application/json", "Accept-Language": "en_US"}
     auth = (client_id, secret_key)
     data = {"grant_type": "client_credentials"}
 
-    response = requests.post(url, headers=headers, auth=auth, data=data)
+    response = req.post(url, headers=headers, auth=auth, data=data)
     response.raise_for_status()
     return response.json().get("access_token")
 
@@ -52,7 +53,7 @@ class PaypalOnboard(APIView):
         data ={ "email": email,
             "tracking_id": f"{assumptor_id}",
             "partner_config_override": {
-                "return_url": f"http://{baseUrl}/user/onboarded/",
+                "return_url": f"{baseURL}/v1/user/onboarded/",
                 "return_url_description": "the url to return the merchant after the paypal onboarding process.",
                 "show_add_credit_card": False
             },
@@ -88,10 +89,11 @@ class PaypalOnboard(APIView):
             ]
         }
 
-        response = requests.post(f'{baseURL}/v2/customer/partner-referrals', headers=headers, json=data)
+        response = req.post(f'{baseURL}/v2/customer/partner-referrals', headers=headers, json=data)
         print(response.json())
 
         response = response.json()
+        print(response)
         onboarding_url = response["links"][1]["href"]
         partner_id = onboarding_url.split("token=")[-1]
         print(partner_id)
@@ -110,16 +112,17 @@ class CreatePaypalOrder(APIView):
             "Content-Type": "application/json"
         }
 
-        # amount = request.data.get('amount', '10.00')
+        amount = request.data.get('amount', '10.00')
 
-        id
-        user = request.user
-        offer_id = request.data.get('offer_id')
-        offer = Offer.objects.get(offer_id=offer_id)
-        amount = offer.offer_price
-        list_id = offer.list_id
+        # user = request.user
+        # data = request.data.get('order_id')
 
-        print(offer_id)
+        # if 'order_id' in data:
+        #     order_id = data.get('order_id')
+
+        #     order = ReservationInvoice.objects.get(order_id=order_id)
+            
+        #     amount = order.order_price
 
         order_data = {
             "intent": "CAPTURE",
@@ -139,24 +142,102 @@ class CreatePaypalOrder(APIView):
         }
 
         try:
-            if OrderListing.objects.filter(list_id=list_id, order_status='PENDING'):
-                return Response({'error': 'There is an existing order for this listing'}, status=status.HTTP_400_BAD_REQUEST)
             
-            response = requests.post(url, json=order_data, headers=auth_header)
+            response = req.post(url, json=order_data, headers=auth_header)
             response.raise_for_status()
             
             order_data = response.json()
-
-            OrderListing.objects.create(order_price=amount, offer_id=offer, list_id=list_id, user_id=user)
             
             print(order_data)
             print(order_data['id'])
 
             return Response({
-                'order_id': order_data['id'],
+                'paypal_order_id': order_data['id'],
                 'approval_url': next(link['href'] for link in order_data['links'] if link['rel'] == 'approve')
             })
         
-        except requests.exceptions.RequestException as e:
+        except req.exceptions.RequestException as e:
             print(e)
             return Response({'error': 'Unable to create PayPal order'}, status=500)
+        
+class CapturePaypalOrder(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def post(self, request, *args, **kwargs):
+        access = get_paypal_access_token()
+        print(access)
+
+        data = request.data
+
+        trans_type = data.get('trans_type')
+        paypal_order_id = data.get('paypal_order_id')
+
+        if not paypal_order_id:
+            return Response({'error': 'Missing orderID'}, status=400)
+        
+        # order_id = None
+
+        # if 'order_id' in data:
+        order_id = data.get('order_id')
+        print(order_id)
+
+        capture_url = f"{baseURL}/v2/checkout/orders/{paypal_order_id}/capture"
+        auth_header = {
+            "Authorization": f"Bearer {access}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            with transaction.atomic():
+                order = None
+                if order_id:
+                    try:
+                        order = ReservationInvoice.objects.get(order_id=order_id)
+                        order.order_status = 'PAID'
+                        order.save()
+
+                        if order.offer_id:
+                            order.offer_id.offer_status = 'PAID'
+                            order.offer_id.save()
+                    except ReservationInvoice.DoesNotExist:
+                        return Response({'error': 'Order not found'}, status=404)
+                    
+                capture_response = req.post(capture_url, headers=auth_header)
+                capture_response.raise_for_status()
+                
+                capture_data = capture_response.json()
+                print(capture_data)
+                
+                # Extract capture details from the response
+                capture_id = capture_data['purchase_units'][0]['payments']['captures'][0]['id']
+                capture_amount = capture_data['purchase_units'][0]['payments']['captures'][0]['amount']['value']
+                # Retrieve the UserAccount instance associated with the currently authenticated user
+                user_account = request.user
+
+                # Create a new transaction and link it to the logged-in user
+                new_transaction = Transaction.objects.create(
+                    transaction_paypal_order_id=paypal_order_id,
+                    transaction_paypal_capture_id=capture_id,
+                    transaction_amount=capture_amount,
+                    user_id=user_account,  
+                    transaction_type=trans_type,
+                    order_id=order
+                )
+
+                return Response({
+                    'status': 'COMPLETED',
+                    'paypal_order_id': paypal_order_id,
+                    'capture_id': capture_id,
+                    'amount': capture_amount,
+                    'transaction_id': new_transaction.transaction_id  # Return the transaction ID for reference
+                })
+        
+        except req.exceptions.RequestException as e:
+            print(f"PayPal capture error: {str(e)}")
+            return Response({'error': 'Payment capture failed'}, status=500)
+        
+class PaypalPaymentCancelled(APIView):
+        def get(self, request, *args, **kwargs):
+                # You can handle cancellation logic here, such as notifying the user
+                return JsonResponse({'status': 'Payment cancelled'})
